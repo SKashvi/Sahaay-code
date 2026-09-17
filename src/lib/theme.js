@@ -49,10 +49,18 @@ const HEX = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
  * or smuggle in a url(). */
 const FONT_STACK = /^[\w\s,'"().-]{1,200}$/;
 
+/* Accepts 0E7C66 as well as #0E7C66.
+ *
+ * dotenv treats an unquoted leading # as a comment, so SAHAAY_ACCENT=#0E7C66
+ * in a .env file silently becomes an empty string and the accent appears not
+ * to work at all. Quoting fixes it, but nobody discovers that from the
+ * symptom, so the hash is optional here and added back when it is missing. */
 function cleanColor(value) {
   if (typeof value !== 'string') return null;
   const trimmed = value.trim();
-  return HEX.test(trimmed) ? trimmed : null;
+  if (!trimmed) return null;
+  const withHash = trimmed.startsWith('#') ? trimmed : `#${trimmed}`;
+  return HEX.test(withHash) ? withHash : null;
 }
 
 function cleanRadius(value, max) {

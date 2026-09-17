@@ -41,8 +41,13 @@ function loadTheme(envOverrides) {
   const saved = {};
   Object.keys(envOverrides || {}).forEach((key) => {
     saved[key] = process.env[key];
-    if (envOverrides[key] === undefined) delete process.env[key];
-    else process.env[key] = envOverrides[key];
+    // An empty string, not a delete. Re-requiring config/env re-runs
+    // dotenv.config(), which sets any key NOT already present, so deleting
+    // would let a deployment's own .env leak back in and this test would fail
+    // on a machine that happens to theme its widget. An empty string is
+    // present, so dotenv leaves it, and every validator reads it as no
+    // opinion, which is exactly what unset means.
+    process.env[key] = envOverrides[key] === undefined ? '' : envOverrides[key];
   });
   const mod = require('../src/lib/theme');
   return { mod, restore: () => {

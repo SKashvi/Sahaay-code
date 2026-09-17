@@ -48,7 +48,13 @@
    * and the layer they come from (a script tag on someone else's page) is the
    * one the server never got to check. */
   const HEX = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
-  const okColor = (v) => (typeof v === 'string' && HEX.test(v.trim()) ? v.trim() : null);
+  const okColor = (v) => {
+    if (typeof v !== 'string' || !v.trim()) return null;
+    // A hash is optional, matching lib/theme.js, so a value copied out of a
+    // .env file without its quotes still works here.
+    const withHash = v.trim().startsWith('#') ? v.trim() : `#${v.trim()}`;
+    return HEX.test(withHash) ? withHash : null;
+  };
   const okPx = (v, max) => {
     const n = Math.round(Number(v));
     return Number.isFinite(n) && n >= 0 && n <= max ? n : null;
