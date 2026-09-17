@@ -108,9 +108,44 @@
   }
 
   /* ---------------- Checkout page (checkout.html) ---------------- */
+
+  /* Same normalisation the server applies in src/lib/offers.js, so what the
+   * summary priced is character for character what checkout will look up.
+   * A customer who types "fest 10" off a poster gets the FEST10 they meant. */
+  function normalizeOfferCode(code) {
+    return String(code == null ? '' : code).replace(/\s+/g, '').toUpperCase();
+  }
+
+  /* The last quote the server gave us, or null when no code is applied. Never
+   * trusted for the amount charged: it drives the summary only, and checkout
+   * recomputes everything from the offers table. */
+  let appliedOffer = null;
+
   const checkoutForm = document.querySelector('[data-checkout-form]');
   if (checkoutForm) {
     renderCheckoutSummary();
+
+    const offerInput = checkoutForm.querySelector('[name="offerCode"]');
+    const offerApply = checkoutForm.querySelector('[data-offer-apply]');
+    if (offerInput && offerApply) {
+      offerApply.addEventListener('click', () => applyOfferCode());
+      // Enter in the code field applies the code rather than submitting the
+      // whole form, which would place the order at full price.
+      offerInput.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter') return;
+        e.preventDefault();
+        applyOfferCode();
+      });
+      // Editing a code drops the quote it produced, so the summary cannot
+      // keep showing a discount for a code no longer in the box.
+      offerInput.addEventListener('input', () => {
+        if (!appliedOffer) return;
+        if (normalizeOfferCode(offerInput.value) === appliedOffer.offerCode) return;
+        appliedOffer = null;
+        showOfferMessage('', null);
+        renderCheckoutSummary();
+      });
+    }
     // Generated once per page load, not once per click, so retrying the
     // same submission (network hiccup, an impatient second click) reuses
     // the same key and the backend treats it as one order, not two. A full
@@ -140,22 +175,95 @@
       submitBtn.textContent = 'Placing order...';
 
       try {
-        const offerInput = checkoutForm.querySelector('[name="offerCode"]');
+        const offerField = checkoutForm.querySelector('[name="offerCode"]');
+        const typedCode = normalizeOfferCode(offerField ? offerField.value : '');
         const order = await API.checkout({
           idempotencyKey: checkoutIdempotencyKey,
           items: cart.map((l) => ({ productId: l.productId, size: l.size, color: l.color, qty: l.qty })),
           customer: values,
           // Only the code travels. The discount is computed server side from
           // the offers table, so nothing here can change what is charged.
-          offerCode: offerInput && offerInput.value.trim() ? offerInput.value.trim() : undefined,
+          offerCode: typedCode || undefined,
         });
         openRazorpay(order, values);
       } catch (err) {
         showCheckoutError(err.details ? err.details.map((d) => d.message).join(', ') : err.message);
-        submitBtn.disabled = false;
-        submitBtn.textContent = 'Place order';
+        resetPlaceOrder();
       }
     });
+  }
+
+  /* Part of every path out of a submit, successful or not. Previously the
+   * failure inside the Razorpay handler left the button reading "Placing
+   * order..." forever, with no way back short of a reload. */
+  function resetPlaceOrder() {
+    if (!checkoutForm) return;
+    const submitBtn = checkoutForm.querySelector('button[type="submit"]');
+    if (!submitBtn) return;
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'Place order';
+  }
+
+  function showOfferMessage(message, kind) {
+    const el = document.querySelector('[data-offer-message]');
+    if (!el) return;
+    el.textContent = message || '';
+    el.classList.toggle('ok', kind === 'ok');
+    el.classList.toggle('error', kind === 'error');
+  }
+
+  /* Prices the cart with the code against the server before anything is
+   * bought, so the summary can show the real discount and a refused code can
+   * say why. The figure shown is never the figure charged: checkout recomputes
+   * it from the offers table with the code alone. */
+  async function applyOfferCode() {
+    const input = checkoutForm && checkoutForm.querySelector('[name="offerCode"]');
+    if (!input) return;
+    const code = normalizeOfferCode(input.value);
+    input.value = code;
+
+    if (!code) {
+      appliedOffer = null;
+      showOfferMessage('', null);
+      renderCheckoutSummary();
+      return;
+    }
+
+    const cart = Cart.get();
+    if (!cart.length) {
+      showOfferMessage('Add something to your cart before applying a code.', 'error');
+      return;
+    }
+
+    const button = checkoutForm.querySelector('[data-offer-apply]');
+    if (button) button.disabled = true;
+    showOfferMessage('Checking...', null);
+    try {
+      const quote = await apiFetch('/api/orders/quote', {
+        method: 'POST',
+        body: JSON.stringify({
+          items: cart.map((l) => ({ productId: l.productId, size: l.size, color: l.color, qty: l.qty })),
+          offerCode: code,
+        }),
+      });
+      if (!quote.offerCode || quote.discount <= 0 && quote.shipping !== 0) {
+        // The code resolved but is worth nothing against this cart, which is
+        // still a reason to say something rather than show a zero discount.
+        appliedOffer = quote.offerCode ? quote : null;
+        showOfferMessage(quote.offerCode ? 'That code does not reduce this order.' : 'That code is not valid right now.', 'error');
+      } else {
+        appliedOffer = quote;
+        showOfferMessage((quote.offerTitle || code) + ' applied.', 'ok');
+      }
+    } catch (err) {
+      // The server's own sentence, which already says whether the code is
+      // unknown or the order is below its minimum spend.
+      appliedOffer = null;
+      showOfferMessage(err.message || 'That code could not be applied.', 'error');
+    } finally {
+      if (button) button.disabled = false;
+      renderCheckoutSummary();
+    }
   }
 
   function showCheckoutError(message) {
@@ -189,6 +297,7 @@
             razorpaySignature: response.razorpay_signature,
           });
           Cart.clear();
+          resetPlaceOrder();
           document.querySelector('[data-checkout-form-wrap]').hidden = true;
           const confirm = document.querySelector('[data-checkout-confirm]');
           confirm.hidden = false;
@@ -196,14 +305,11 @@
           confirm.querySelector('[data-confirm-email]').textContent = customer.email;
         } catch (err) {
           showCheckoutError('Payment was captured but could not be confirmed automatically. Contact support with order ' + order.displayId + '.');
+          resetPlaceOrder();
         }
       },
       modal: {
-        ondismiss: function () {
-          const submitBtn = checkoutForm.querySelector('button[type="submit"]');
-          submitBtn.disabled = false;
-          submitBtn.textContent = 'Place order';
-        },
+        ondismiss: resetPlaceOrder,
       },
     });
     rzp.open();
@@ -226,12 +332,25 @@
     // exactly what Razorpay is about to charge. Previously this only
     // showed the subtotal labeled "Total", shipping never appeared here
     // even though it was being charged, this is that fix.
+    // With a code applied, every figure below the item lines comes from the
+    // server's quote rather than from this page, because the server is what
+    // decides them: an offer can zero the shipping as well as cut the
+    // subtotal, and recomputing that here would be a second implementation
+    // free to disagree with the one that charges the card.
+    const applied = appliedOffer && appliedOffer.discount > 0 || appliedOffer && appliedOffer.shipping === 0 ? appliedOffer : null;
+    const discount = applied ? applied.discount : 0;
+    const shownShipping = applied ? applied.shipping : shipping;
+    const total = applied ? applied.total : subtotal + shipping;
+
     el.innerHTML = cart.map((line) => (
       '<div class="summary-row"><span>' + escapeHtml(line.name) + ' (' + escapeHtml(line.size) + ') &times; ' + line.qty + '</span><span>' + formatPaise(line.qty * line.price) + '</span></div>'
     )).join('') +
       '<div class="summary-row"><span>Subtotal</span><span>' + formatPaise(subtotal) + '</span></div>' +
-      '<div class="summary-row"><span>Shipping</span><span>' + (shipping === 0 ? 'Free' : formatPaise(shipping)) + '</span></div>' +
-      '<div class="summary-row total"><span>Total</span><span>' + formatPaise(subtotal + shipping) + '</span></div>';
+      (discount > 0
+        ? '<div class="summary-row discount"><span>Discount' + (applied.offerCode ? ' (' + escapeHtml(applied.offerCode) + ')' : '') + '</span><span>&minus;' + formatPaise(discount) + '</span></div>'
+        : '') +
+      '<div class="summary-row"><span>Shipping</span><span>' + (shownShipping === 0 ? 'Free' : formatPaise(shownShipping)) + '</span></div>' +
+      '<div class="summary-row total"><span>Total</span><span>' + formatPaise(total) + '</span></div>';
   }
 
   /* ---------------- Track order page (track-order.html) ---------------- */
@@ -278,6 +397,65 @@
       }).join('');
     }
     renderReturnItemPicker(order);
+    renderCancelControl(order);
+  }
+
+  /* Cancelling is offered only while the server says it is possible, which is
+   * while the order is awaiting payment or being processed. Once it has
+   * shipped the control disappears and the return panel below is the route,
+   * which is the same split the agent and the API both enforce. */
+  function renderCancelControl(order) {
+    const panel = document.querySelector('[data-cancel-panel]');
+    if (!panel) return;
+    panel.hidden = !order.canCancel;
+    const message = panel.querySelector('[data-cancel-message]');
+    if (message) { message.textContent = ''; message.className = 'offer-message'; }
+    const button = panel.querySelector('[data-cancel-order]');
+    if (button) { button.disabled = false; button.hidden = false; button.textContent = 'Cancel this order'; }
+  }
+
+  const cancelButton = document.querySelector('[data-cancel-order]');
+  if (cancelButton) {
+    cancelButton.addEventListener('click', async () => {
+      if (!activeOrder) return;
+      const panel = document.querySelector('[data-cancel-panel]');
+      const message = panel.querySelector('[data-cancel-message]');
+      const email = trackForm.querySelector('[name="email"]').value;
+
+      // Cancelling cannot be undone and, on a paid order, starts a refund
+      // review. Worth one deliberate confirmation rather than a single
+      // mis-click.
+      const paidWarning = activeOrder.status === 'PENDING_PAYMENT'
+        ? 'Cancel this order? Nothing has been charged.'
+        : 'Cancel this order? A refund of what you paid will be sent to our team for review.';
+      if (!window.confirm(paidWarning)) return;
+
+      cancelButton.disabled = true;
+      cancelButton.textContent = 'Cancelling...';
+      try {
+        const result = await API.cancelOrder({ email, displayId: activeOrder.displayId });
+        // Re-read rather than patching the order in place, so the status
+        // track and the return panel both reflect what the server now holds.
+        const refreshed = await API.trackOrder({ email, displayId: activeOrder.displayId });
+        activeOrder = refreshed.order;
+        renderOrderResult(activeOrder, document.querySelector('[data-track-result]'));
+
+        // renderOrderResult has just reset the panel from the refreshed order,
+        // which now reports canCancel false. The outcome is written back
+        // afterwards so the confirmation survives that reset.
+        const livePanel = document.querySelector('[data-cancel-panel]');
+        const liveMessage = livePanel.querySelector('[data-cancel-message]');
+        livePanel.hidden = false;
+        livePanel.querySelector('[data-cancel-order]').hidden = true;
+        liveMessage.textContent = result.message;
+        liveMessage.className = 'offer-message ok';
+      } catch (err) {
+        message.textContent = err.message || 'That order could not be cancelled.';
+        message.className = 'offer-message error';
+        cancelButton.disabled = false;
+        cancelButton.textContent = 'Cancel this order';
+      }
+    });
   }
 
   function renderReturnItemPicker(order) {

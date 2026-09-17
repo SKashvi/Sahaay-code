@@ -1,6 +1,23 @@
 /* ==========================================================================
    VELOUR: design tokens
    ========================================================================== */
+/* Brand flash.
+ *
+ * Every page ships placeholder brand text in its markup so the HTML is
+ * readable on its own, and brand.js replaces it once /api/config answers.
+ * Between those two moments the browser painted the placeholder, so the first
+ * thing a customer saw on someone else's store was this one's name.
+ *
+ * visibility rather than display, so the header keeps its size and nothing
+ * jumps when the real name arrives. The class goes on <html> in brand.js,
+ * including when the config request fails, so a brand element can never be
+ * left permanently invisible.
+ */
+[data-brand-name],
+[data-brand-tagline] { visibility: hidden; }
+.brand-ready [data-brand-name],
+.brand-ready [data-brand-tagline] { visibility: visible; }
+
 :root {
   --brand-accent: #6C5FFF;
   --brand-accent-deep: #4B3FD1;
@@ -692,3 +709,12 @@ a { color: inherit; text-decoration: none; }
 .score-pill.contradicts { background: color-mix(in srgb, var(--danger) 16%, var(--white)); }
 .request-actions { display: flex; gap: 8px; margin-top: 10px; }
 .request-photo { max-width: 180px; border-radius: var(--radius-sm); margin-top: 10px; display: block; }
+
+/* ---------------------------- offer code ---------------------------- */
+.offer-code-row { display: flex; gap: 8px; align-items: stretch; }
+.offer-code-row input { flex: 1; min-width: 0; text-transform: uppercase; }
+.offer-code-row input::placeholder { text-transform: none; }
+.offer-message { display: block; margin-top: 6px; font-size: 12px; min-height: 1em; }
+.offer-message.ok { color: var(--brand-accent-deep); font-weight: 600; }
+.offer-message.error { color: var(--danger, #c0392b); }
+.summary-row.discount span:last-child { color: var(--brand-accent-deep); font-weight: 600; }

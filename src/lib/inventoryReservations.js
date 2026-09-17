@@ -47,6 +47,33 @@ async function releaseReservation(client, orderId) {
   return true;
 }
 
+/* Puts stock back for an order whose reservation was already finalized.
+ *
+ * releaseReservation above is for an order that never got paid: the units are
+ * still held in reserved_quantity, so it moves them back. Once payment lands,
+ * finalizeReservation drops the hold and the units are simply gone from
+ * stock_quantity. Cancelling at that point is a different repair: add the
+ * units back outright, with nothing to un-reserve.
+ *
+ * No idempotency flag of its own. The only caller is the CANCELLED transition
+ * in orderStateMachine.js, which runs under SELECT ... FOR UPDATE on the order
+ * and is refused a second time because CANCELLED is terminal, so this cannot
+ * run twice for one order.
+ */
+async function restoreStock(client, orderId) {
+  const items = await client.query(
+    `SELECT variant_id AS "variantId", qty FROM order_items WHERE order_id = $1 AND variant_id IS NOT NULL`,
+    [orderId]
+  );
+  for (const item of items.rows) {
+    await client.query(
+      `UPDATE product_variants SET stock_quantity = stock_quantity + $1, updated_at = now() WHERE id = $2`,
+      [item.qty, item.variantId]
+    );
+  }
+  return items.rows.length;
+}
+
 async function releaseExpiredReservations() {
   const candidates = await db.query(
     `SELECT id, razorpay_order_id AS "razorpayOrderId" FROM orders
@@ -78,4 +105,4 @@ async function releaseExpiredReservations() {
   return released;
 }
 
-module.exports = { RESERVATION_MINUTES, finalizeReservation, releaseReservation, releaseExpiredReservations };
+module.exports = { RESERVATION_MINUTES, finalizeReservation, releaseReservation, restoreStock, releaseExpiredReservations };

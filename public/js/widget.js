@@ -59,6 +59,53 @@
     return Number.isFinite(parsed) ? Math.round(parsed * 100) : 0;
   };
 
+  /* Chat history, per session id, in sessionStorage.
+   *
+   * The session id already survives a page change (localStorage), but the
+   * rendered messages did not, so walking from the shop to the cart wiped the
+   * conversation on screen while the server still had it.
+   *
+   * sessionStorage rather than a server read: the session id comes from the
+   * browser and is explicitly NOT proof of identity anywhere in this codebase
+   * (see src/middleware/customerAuth.js). There is no endpoint that returns a
+   * transcript by session id, and adding one would mean any script that can
+   * read localStorage could also read back a conversation that may name an
+   * order. The transcript is already in the browser that produced it, so it
+   * is kept there, in the tab that owns it.
+   */
+  const HISTORY_LIMIT = 20;
+  const historyKey = () => `velour_chat_log_${sessionId()}`;
+
+  function loadHistory() {
+    try {
+      const raw = sessionStorage.getItem(historyKey());
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return [];
+      // Shaped on the way in, because this is browser storage and anything
+      // could have written to it.
+      return parsed
+        .filter((m) => m && typeof m.text === 'string')
+        .slice(-HISTORY_LIMIT)
+        .map((m) => ({
+          role: m.role === 'user' ? 'user' : 'assistant',
+          text: m.text,
+          blocks: Array.isArray(m.blocks) ? m.blocks : [],
+        }));
+    } catch (err) {
+      return [];
+    }
+  }
+
+  function saveHistory() {
+    try {
+      sessionStorage.setItem(historyKey(), JSON.stringify(state.messages.slice(-HISTORY_LIMIT)));
+    } catch (err) {
+      // Private browsing, or a full quota. The conversation still works for
+      // this page, it just will not survive the next one.
+    }
+  }
+
   function sessionId() {
     let id = null;
     try { id = localStorage.getItem('velour_chat_session'); } catch (err) { /* The in-memory fallback avoids storing anything except the session id. */ }
@@ -239,7 +286,11 @@
       const mode = items.length === 1 ? 'hero' : (items.length === 2 ? 'compare' : 'rows');
       return `<section class="vw-card"><div class="vw-card-title">${ESC(block.heading || 'Recommended for you')}</div><div class="vw-products vw-products-${mode}">${items.map((item, index) => renderProduct(item, mode, index)).join('')}</div></section>`;
     }
-    if (block.type === 'offers') return `<section class="vw-card"><div class="vw-card-title">Offers</div><div class="vw-offers">${(block.items || []).map((o) => `<div class="vw-offer"><strong>${ESC(o.title)}</strong>${o.code ? ` · ${ESC(o.code)}` : ''}<br>${ESC(o.description || '')}</div>`).join('')}</div></section>`;
+    // The code goes in its own element, holding nothing but the code, so what
+    // a customer reads is exactly what checkout expects. Previously it sat
+    // inline behind a spaced separator, which is how "FEST10" gets copied or
+    // retyped with a space in it and then refused at the till.
+    if (block.type === 'offers') return `<section class="vw-card"><div class="vw-card-title">Offers</div><div class="vw-offers">${(block.items || []).map((o) => `<div class="vw-offer"><strong>${ESC(o.title)}</strong>${o.code ? `<code class="vw-offer-code">${ESC(String(o.code).replace(/\s+/g, ''))}</code>` : ''}${o.minSpend ? `<span class="vw-offer-min">over ${ESC(o.minSpend)}</span>` : ''}<span class="vw-offer-copy">${ESC(o.description || '')}</span></div>`).join('')}</div></section>`;
     if (block.type === 'order') return renderOrder(block.order);
     if (block.type === 'verify') return renderVerify(block);
     if (block.type === 'proposal') return `<section class="vw-card vw-proposal"><div class="vw-card-title">Sent for review</div><div>Request <strong>${ESC(block.proposal?.displayId || '')}</strong> is pending human review.</div><div class="vw-empty">It is not approved yet. We will use the review decision to update you.</div></section>`;
@@ -384,6 +435,7 @@
       line.qty
     );
     flashAdded(ref);
+    refreshCart();
   }
 
   function flashAdded(ref) {
@@ -416,8 +468,22 @@
     return `<section class="vw-card"><div class="vw-card-title">Track orders</div><div class="vw-field"><label>Email used at checkout</label><input type="email" data-track-email value="${ESC(state.trackEmail)}"></div><div class="vw-field"><label>Order ID</label><input data-track-order value="${ESC(state.trackOrderId)}" placeholder="VEL-XXXXXX"></div>${state.codeSent ? `<div class="vw-field"><label>Six digit code</label><input class="vw-code" data-track-code maxlength="6" inputmode="numeric"></div><div class="vw-actions"><button class="vw-btn" data-action="track-verify">Verify code</button></div>` : `<button class="vw-btn" data-action="request-code">Email me a code</button>`}<div class="vw-empty" data-track-msg></div></section>`;
   }
 
+  /* The storefront and the widget write to one localStorage cart through the
+   * same window.Cart, but they render from it at different moments. Anything
+   * held between renders goes stale the instant the other one changes it, so
+   * the cart is re-read at the point of use and never carried: when the panel
+   * opens, after an add, and whenever api.js announces a change. */
   function cartLines() {
     return window.Cart && typeof window.Cart.get === 'function' ? window.Cart.get() : [];
+  }
+
+  /* Re-reads and repaints, but only when the panel is actually showing the
+   * cart or the checkout built from it. Anywhere else there is nothing on
+   * screen that could be stale, and a render would cost the customer whatever
+   * they had typed in the message field. */
+  function refreshCart() {
+    if (!shadow || !state.config) return;
+    if (state.view === 'cart' || state.view === 'checkout') render();
   }
 
   function renderCart() {
@@ -444,6 +510,7 @@
       state.messages.push({ role: 'assistant', text: err.message || 'I am having trouble reaching the assistant right now.' });
     } finally {
       state.sending = false;
+      saveHistory();
       render();
     }
   }
@@ -479,6 +546,7 @@
       state.verified = true; state.verifying = false; state.codeSent = false;
       render();
       state.messages.push({ role: 'assistant', text: `Verified for order ${data.orderDisplayId}.` });
+      saveHistory();
       render();
     } catch (err) {
       state.verifying = false;
@@ -502,6 +570,9 @@
   async function signout() {
     await request('/api/session/signout', { method: 'POST', body: JSON.stringify({}) });
     state.verified = false; state.activeOrder = null; state.codeSent = false; state.messages = [];
+    // Clears the stored copy as well, otherwise signing out empties the panel
+    // and the next page brings the whole conversation back.
+    saveHistory();
     render();
   }
 
@@ -619,6 +690,7 @@
     host.id = ROOT_ID;
     if (!document.getElementById(ROOT_ID)) document.body.appendChild(host);
     shadow = host.shadowRoot || host.attachShadow({ mode: 'open' });
+    state.messages = loadHistory();
     await refreshState();
     try { await loadConfigWithRetry(); } catch (err) {
       // No fabricated brand styling: the widget stays hidden rather than
@@ -629,6 +701,11 @@
       host.innerHTML = '';
       return;
     }
+    // api.js fires this on every cart write, from either side. Without it the
+    // widget's open cart panel keeps showing what the cart held when it was
+    // opened while the storefront shows something else.
+    document.addEventListener('velour:cart-change', refreshCart);
+
     render();
   }
 

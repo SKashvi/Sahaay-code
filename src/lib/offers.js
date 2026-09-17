@@ -18,20 +18,36 @@ class OfferError extends Error {
   }
 }
 
+/**
+ * One spelling for a code, applied to both sides of the comparison.
+ *
+ * A customer reads FEST10 off a poster and types "fest 10". Trimming and
+ * upper-casing already happened; the space in the middle did not, so the code
+ * was rejected and the order went through at full price. Stored codes are
+ * normalised too, so a code saved from the dashboard with a stray space still
+ * matches what a customer types without one.
+ */
+function normalizeOfferCode(code) {
+  return String(code == null ? '' : code).replace(/\s+/g, '').toUpperCase();
+}
+
 /** Looks up a code and checks it is usable right now. Returns null for a
  * blank code, throws for a code the customer actually typed and got wrong,
  * so a typo is reported rather than silently ignored at full price. */
 async function findUsableOffer(client, code) {
-  if (!code) return null;
+  const normalized = normalizeOfferCode(code);
+  if (!normalized) return null;
   const result = await (client || db).query(
+    // [[:space:]] rather than \\s: a POSIX class needs no backslash, so the
+    // pattern cannot be mangled by a change in standard_conforming_strings.
     `SELECT id, code, title, kind, value, min_subtotal AS "minSubtotal", product_ids AS "productIds"
        FROM offers
       WHERE active = true
         AND code IS NOT NULL
-        AND upper(code) = upper($1)
+        AND upper(regexp_replace(code, '[[:space:]]', '', 'g')) = $1
         AND (starts_at IS NULL OR starts_at <= now())
         AND (ends_at IS NULL OR ends_at > now())`,
-    [String(code).trim()]
+    [normalized]
   );
   if (!result.rows.length) throw new OfferError('That offer code is not valid right now.');
   return result.rows[0];
@@ -101,4 +117,4 @@ function computeRefundRatio(subtotal, discount) {
   return Math.min(1, ratio);
 }
 
-module.exports = { findUsableOffer, applyOffer, computeRefundRatio, OfferError };
+module.exports = { findUsableOffer, applyOffer, computeRefundRatio, normalizeOfferCode, OfferError };

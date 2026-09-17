@@ -36,8 +36,52 @@ async function main() {
   assert(scriptSrc, `CSP missing script-src directive: ${csp}`);
   assert(scriptSrc[0].includes('https://checkout.razorpay.com'), `Razorpay checkout origin missing from script-src: ${scriptSrc[0]}`);
 
-  console.log('BOOT TEST PASSED: app loaded and checkout CSP allows Razorpay checkout.js');
-  console.log('Content-Security-Policy:', csp);
+  /* The checkout page carries a relaxed policy so a netbanking payment can
+   * post to the bank's own domain, which cannot be enumerated. Every other
+   * path keeps the strict one. Both halves are asserted, because the relaxed
+   * policy leaking onto the rest of the site is the failure that matters and
+   * it would otherwise be invisible. */
+  assert(
+    /form-action[^;]*\bhttps:/.test(csp),
+    `checkout CSP must allow the netbanking POST via form-action https: ${csp}`
+  );
+  assert(
+    /frame-src[^;]*https:\/\/\*\.razorpay\.com/.test(csp),
+    `checkout CSP must allow the Razorpay frame: ${csp}`
+  );
+  assert(
+    /connect-src[^;]*https:\/\/\*\.razorpay\.com/.test(csp),
+    `checkout CSP must allow Razorpay's own calls: ${csp}`
+  );
+  // Widening form submission is not a reason to widen code execution.
+  assert(
+    !/script-src[^;]*\bhttps:(\s|;|$)/.test(csp),
+    `checkout script-src must NOT accept bare https:, only the named Razorpay origin: ${scriptSrc[0]}`
+  );
+
+  const homeResponse = await request(app).get('/index.html');
+  const homeCsp = homeResponse.headers['content-security-policy'] || '';
+  assert(homeCsp, 'every page must carry a CSP');
+  assert(
+    !/form-action[^;]*\bhttps:/.test(homeCsp),
+    `the relaxed form-action has leaked off the checkout page: ${homeCsp}`
+  );
+  assert(
+    !homeCsp.includes('https://*.razorpay.com'),
+    `the Razorpay wildcard has leaked off the checkout page: ${homeCsp}`
+  );
+
+  const apiResponse = await request(app).get('/healthz');
+  const apiCsp = apiResponse.headers['content-security-policy'] || '';
+  assert(
+    !/form-action[^;]*\bhttps:/.test(apiCsp),
+    `the relaxed form-action has leaked onto the API: ${apiCsp}`
+  );
+
+  console.log('BOOT TEST PASSED: app loaded, checkout CSP allows Razorpay checkout.js and the netbanking POST,');
+  console.log('                  and the relaxed policy does not leak to other paths.');
+  console.log('Checkout CSP:', csp);
+  console.log('Default CSP: ', homeCsp);
 }
 
 main().catch((err) => {

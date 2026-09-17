@@ -44,6 +44,18 @@ const checkoutLimiter = rateLimit({
   message: { error: 'Too many attempts, please try again shortly.' },
 });
 
+// Previewing an offer code is a read, but it is an unauthenticated read that
+// touches the database, and it sits on the checkout page where a frustrated
+// customer will retype a code several times. Its own budget, so trying codes
+// cannot eat into the checkout allowance and lock someone out of buying.
+const offerQuoteLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many attempts, please try again shortly.' },
+});
+
 // Sending a code is an outbound email triggered by an anonymous visitor, so
 // it is limited harder than ordinary lookups. Checking a code is limited
 // separately: the per-code attempt counter in verification_codes stops
@@ -64,4 +76,4 @@ const verifyAttemptLimiter = rateLimit({
   message: { error: 'Too many attempts, please try again in a few minutes.' },
 });
 
-module.exports = { verificationLimiter, verifyAttemptLimiter, trackOrderLimiter, chatLimiter, adminLoginLimiter, uploadLimiter, checkoutLimiter };
+module.exports = { verificationLimiter, verifyAttemptLimiter, trackOrderLimiter, chatLimiter, adminLoginLimiter, uploadLimiter, checkoutLimiter, offerQuoteLimiter };

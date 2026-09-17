@@ -20,6 +20,7 @@ const db = require('../db');
 const { newId, newDisplayId, paiseToRupeeString } = require('../ids');
 const { checkOrderEligibility, resolveReturnItems, ReturnEligibilityError, RETURN_WINDOW_DAYS } = require('../returns');
 const { isOwnUploadUrl } = require('../storage');
+const { cancelOrder, isCancellable, CancellationError } = require('../cancellation');
 const { requestCode } = require('./verification');
 const { scoreInBackground } = require('./photoScoring');
 
@@ -127,7 +128,7 @@ const definitions = [
   {
     name: 'propose_cancellation',
     description:
-      'Submit a cancellation request for review. Only works before an order ships. Same rule as propose_return, this is a request, not a cancellation. Never tell the customer the order is cancelled.',
+      'Submit a cancellation request for review. Same rule as propose_return, this is a request, not a cancellation. Never tell the customer the order is cancelled. Prefer cancel_order, which cancels immediately: use this only when cancel_order says the order cannot be cancelled and the customer still wants a human to look at it.',
     parameters: {
       type: 'object',
       properties: {
@@ -136,6 +137,12 @@ const definitions = [
       },
       required: ['reason'],
     },
+  },
+  {
+    name: 'cancel_order',
+    description:
+      'Cancel the verified customer\'s order. Works while the order is still awaiting payment or being processed, and is refused once it has shipped, where a return is the right route instead. Takes no arguments, it always acts on the order this session is verified against. This one does change the order, so only call it when the customer has clearly asked to cancel, never to "check" whether cancelling is possible. If the order was paid, the refund is NOT made here, it is sent to a human for review, so say it has been sent for review and never that money is on its way.',
+    parameters: { type: 'object', properties: {}, required: [] },
   },
 ];
 
@@ -407,7 +414,10 @@ async function getOrderStatus(args, ctx) {
       : null,
     items,
     canRequestReturn: returnable,
-    canRequestCancellation: order.status === 'PENDING_PAYMENT' || order.status === 'PROCESSING',
+    // One source of truth for "is this still cancellable", shared with the
+    // tracking page and with cancel_order itself.
+    canCancel: isCancellable(order),
+    canRequestCancellation: isCancellable(order),
     returnWindowDays: RETURN_WINDOW_DAYS,
   };
 
@@ -558,6 +568,52 @@ async function proposeCancellation(args, ctx) {
   };
 }
 
+/* Gated on ctx.customer exactly like get_order_status: the order id comes
+ * from the signed httpOnly cookie, never from an argument the model supplies,
+ * so a model that invents an order id cancels nothing.
+ *
+ * This is the one tool in this file that changes order state, which the file
+ * header's first rule otherwise forbids. It is allowed because it moves no
+ * money: a paid order's refund still lands in the same human approval queue
+ * every other refund goes through (src/lib/cancellation.js). Cancelling is
+ * also the one thing where making the customer wait for a human is the
+ * expensive outcome, because the order ships in the meantime.
+ */
+async function cancelOrderTool(args, ctx) {
+  if (!ctx.customer) return { result: NEEDS_VERIFICATION, blocks: [] };
+
+  try {
+    const outcome = await cancelOrder(ctx.customer.orderId);
+    const summary = {
+      kind: 'CANCELLATION',
+      displayId: outcome.order.display_id,
+      status: 'CANCELLED',
+      refundRequestId: outcome.refund ? outcome.refund.displayId : null,
+      estimatedRefund: outcome.refund ? paiseToRupeeString(outcome.refund.amount) : null,
+    };
+    return {
+      result: {
+        cancelled: true,
+        orderId: outcome.order.display_id,
+        refundRequested: Boolean(outcome.refund),
+        refundRequestId: outcome.refund ? outcome.refund.displayId : undefined,
+        estimatedRefund: summary.estimatedRefund || undefined,
+        message: outcome.refund
+          ? 'The order is cancelled. The refund is NOT done: it has been sent to a human for review. Tell the customer the cancellation is confirmed and the refund is being reviewed, and that they will get an email with the decision. Never say the money is on its way.'
+          : 'The order is cancelled and nothing was charged, so there is no refund to process. Tell the customer that plainly.',
+      },
+      blocks: [{ type: 'proposal', proposal: summary }],
+    };
+  } catch (err) {
+    if (err instanceof CancellationError) {
+      // The message already reads as a sentence for a customer and points at
+      // returns where that is the right route.
+      return { result: { error: 'not_cancellable', message: err.message }, blocks: [] };
+    }
+    throw err;
+  }
+}
+
 const executors = {
   search_catalog: searchCatalog,
   get_store_policy: getStorePolicy,
@@ -567,6 +623,7 @@ const executors = {
   get_order_status: getOrderStatus,
   propose_return: proposeReturn,
   propose_cancellation: proposeCancellation,
+  cancel_order: cancelOrderTool,
 };
 
 /**

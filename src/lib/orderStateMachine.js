@@ -1,5 +1,5 @@
 const db = require('./db');
-const { releaseReservation } = require('./inventoryReservations');
+const { releaseReservation, restoreStock } = require('./inventoryReservations');
 
 /**
  * Every arrow here is a transition an admin (or a future automated
@@ -63,8 +63,14 @@ async function transitionOrder(orderId, toStatus, extra) {
     if (extra.trackingUrl !== undefined) { params.push(extra.trackingUrl); setParts.push(`tracking_url = $${params.length}`); }
     params.push(orderId);
 
-    if (toStatus === 'CANCELLED' && fromStatus === 'PENDING_PAYMENT') {
-      await releaseReservation(client, orderId);
+    // Cancelling always gives the units back, but by two different routes.
+    // An unpaid order still holds them in reserved_quantity. A paid one had
+    // that hold finalized at payment, so the units left stock_quantity for
+    // good and have to be added back outright. Skipping the second case is
+    // how a cancelled paid order quietly loses its stock forever.
+    if (toStatus === 'CANCELLED') {
+      if (fromStatus === 'PENDING_PAYMENT') await releaseReservation(client, orderId);
+      else await restoreStock(client, orderId);
     }
     const result = await client.query(
       `UPDATE orders SET ${setParts.join(', ')} WHERE id = $${params.length} RETURNING *`,

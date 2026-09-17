@@ -74,8 +74,13 @@
           </div>
           <div class="form-field">
             <label for="offerCode">Offer code (optional)</label>
-            <input type="text" id="offerCode" name="offerCode" placeholder="Enter a code if you have one">
-            <span class="field-error">Please enter your PIN code.</span>
+            <div class="offer-code-row">
+              <input type="text" id="offerCode" name="offerCode" placeholder="Enter a code if you have one" autocomplete="off" autocapitalize="characters" spellcheck="false">
+              <button type="button" class="btn-secondary" data-offer-apply>Apply</button>
+            </div>
+            <!-- Says why a code was refused. A code that does not apply used
+                 to be dropped silently and the customer paid full price. -->
+            <span class="offer-message" data-offer-message role="status" aria-live="polite"></span>
           </div>
         </div>
         <button type="submit" class="btn-primary" style="justify-content:center; width:100%;">Place order</button>

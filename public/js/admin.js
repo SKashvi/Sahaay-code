@@ -138,14 +138,21 @@
           : r.status === 'REJECTED'
             ? '<span style="color:var(--danger)">Rejected</span>'
             : '<span style="color:var(--muted)">Awaiting approval</span>';
+      // A cancellation is a refund for goods that were never sent, so it is
+      // marked rather than left to read as an ordinary return.
+      const isCancellation = r.kind === 'CANCELLATION';
+      const typeCell = isCancellation
+        ? '<span class="pill-status" style="background:var(--lavender-soft)">Cancelled order</span>'
+        : 'Return';
       return '<tr><td>' + escapeHtml(r.displayId) + '</td>' +
+        '<td>' + typeCell + '</td>' +
         '<td>' + escapeHtml(r.orderDisplayId) + '<br><span style="color:var(--muted)">' + escapeHtml(r.customerEmail) + '</span></td>' +
         '<td>' + escapeHtml(r.reason) + '</td>' +
         '<td>' + escapeHtml(r.description || '') + '</td>' +
         '<td>' + (r.photoUrl ? '<a href="' + escapeHtml(r.photoUrl) + '" target="_blank" rel="noopener noreferrer">View</a>' : '&mdash;') + '</td>' +
         '<td>' + statusCell + '</td>' +
         '<td>' + refundCell + '</td></tr>';
-    }).join('') || '<tr><td colspan="7">No return requests yet.</td></tr>';
+    }).join('') || '<tr><td colspan="8">No return or cancellation requests yet.</td></tr>';
 
     document.querySelectorAll('[data-return-status]').forEach((sel) => {
       sel.addEventListener('change', async () => {

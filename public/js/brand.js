@@ -21,6 +21,12 @@ async function loadBrand() {
     document.dispatchEvent(new CustomEvent('velour:brand-ready', { detail: window.VELOUR_BRAND }));
   } catch (err) {
     console.error('Could not load brand config', err);
+  } finally {
+    // Reveals the brand elements css/main.css keeps hidden until now, so the
+    // placeholder in the markup is never painted first. In the finally block
+    // deliberately: a failed config must leave a visible header, not a
+    // permanently blank one.
+    document.documentElement.classList.add('brand-ready');
   }
 }
 

@@ -106,10 +106,13 @@ router.patch('/orders/:id/status', requireAdmin, validateBody(orderStatusSchema)
 router.get('/returns', requireAdmin, async (req, res, next) => {
   try {
     const result = await db.query(
-      `SELECT r.id, r.display_id AS "displayId", r.reason, r.description, r.photo_url AS "photoUrl",
+      // kind tells a return of goods apart from a cancelled order's refund.
+      // Both are claims on the same money and go through the same approval,
+      // so they are listed together rather than on two separate screens.
+      `SELECT r.id, r.display_id AS "displayId", r.kind, r.reason, r.description, r.photo_url AS "photoUrl",
               r.status, r.created_at AS "createdAt", r.razorpay_refund_id AS "razorpayRefundId",
               r.refund_amount AS "refundAmount", r.refund_error AS "refundError",
-              o.display_id AS "orderDisplayId", o.customer_email AS "customerEmail"
+              o.display_id AS "orderDisplayId", o.customer_email AS "customerEmail", o.status AS "orderStatus"
        FROM return_requests r JOIN orders o ON o.id = r.order_id
        ORDER BY r.created_at DESC LIMIT 200`
     );

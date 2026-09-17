@@ -296,7 +296,23 @@ button, input, select, textarea { font: inherit; }
 .vw-product-soldout { opacity: .62; }
 .vw-product-soldout img { filter: grayscale(1); }
 .vw-offers { display: flex; flex-wrap: wrap; gap: var(--vw-space-2); }
-.vw-offer { border: 1px solid color-mix(in srgb, var(--vw-accent) 36%, transparent); background: var(--vw-surface); border-radius: 999px; padding: var(--vw-space-2) var(--vw-space-3); font-size: var(--vw-font-size-xs); }
+.vw-offer { border: 1px solid color-mix(in srgb, var(--vw-accent) 36%, transparent); background: var(--vw-surface); border-radius: var(--vw-radius-md); padding: var(--vw-space-2) var(--vw-space-3); font-size: var(--vw-font-size-xs); display: flex; flex-wrap: wrap; align-items: center; gap: var(--vw-space-2); }
+/* The code, and nothing but the code. Its own element with no letter-spacing
+ * and select-all, so reading it off the screen or copying it both give the
+ * exact string checkout expects. */
+.vw-offer-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: normal;
+  white-space: nowrap;
+  user-select: all;
+  font-weight: 800;
+  background: color-mix(in srgb, var(--vw-accent) 12%, var(--vw-surface));
+  border: 1px dashed color-mix(in srgb, var(--vw-accent) 45%, transparent);
+  border-radius: var(--vw-radius-sm);
+  padding: 2px var(--vw-space-2);
+}
+.vw-offer-min { color: var(--vw-text-muted); }
+.vw-offer-copy { flex-basis: 100%; color: var(--vw-text-muted); }
 .vw-order-item { display: flex; justify-content: space-between; gap: var(--vw-space-3); padding: var(--vw-space-2) 0; border-bottom: 1px solid var(--vw-border); font-size: var(--vw-font-size-sm); }
 .vw-order-item:last-child { border-bottom: 0; }
 .vw-status { font-weight: 800; color: var(--vw-accent); }

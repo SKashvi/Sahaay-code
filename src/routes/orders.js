@@ -4,11 +4,12 @@ const db = require('../lib/db');
 const { newId, newDisplayId } = require('../lib/ids');
 const { createRazorpayOrder, verifyPaymentSignature } = require('../lib/razorpay');
 const { validateBody } = require('../middleware/validate');
-const { checkoutSchema, verifyPaymentSchema, trackOrderSchema } = require('../schemas');
-const { trackOrderLimiter, checkoutLimiter } = require('../middleware/rateLimiters');
+const { checkoutSchema, verifyPaymentSchema, trackOrderSchema, quoteSchema, cancelOrderSchema } = require('../schemas');
+const { trackOrderLimiter, checkoutLimiter, offerQuoteLimiter } = require('../middleware/rateLimiters');
 const { notifyOrderConfirmed } = require('../lib/notifications');
 const { RESERVATION_MINUTES, finalizeReservation, releaseReservation } = require('../lib/inventoryReservations');
-const { findUsableOffer, applyOffer, computeRefundRatio } = require('../lib/offers');
+const { findUsableOffer, applyOffer, computeRefundRatio, normalizeOfferCode } = require('../lib/offers');
+const { cancelOrder, isCancellable } = require('../lib/cancellation');
 
 const router = express.Router();
 
@@ -31,10 +32,66 @@ function computeRequestFingerprint(items, customer, offerCode) {
   // The offer code is part of what makes a checkout "the same attempt". A
   // retry that adds or changes a code is a different price, so it must not
   // silently replay the order created at the old price.
+  // Normalised the same way the lookup normalises it, so "FEST 10" and
+  // "FEST10" are one attempt rather than two orders at the same price.
   return crypto.createHash('sha256')
-    .update(normalizedItems + '::' + customer.email.toLowerCase() + '::' + String(offerCode || '').toUpperCase())
+    .update(normalizedItems + '::' + customer.email.toLowerCase() + '::' + normalizeOfferCode(offerCode))
     .digest('hex');
 }
+
+/**
+ * Prices a cart without creating anything.
+ *
+ * The checkout summary needs to show what an offer code is actually worth
+ * before the customer commits, and it must be the same figure the order will
+ * be created with. Both come from the same two functions over the same
+ * tables, so the summary cannot promise a discount checkout then declines to
+ * give. Creates no order, touches no money, and returns the offer error
+ * verbatim so the page can say why a code was refused instead of silently
+ * charging full price.
+ */
+router.post('/quote', offerQuoteLimiter, validateBody(quoteSchema), async (req, res, next) => {
+  try {
+    const { items, offerCode } = req.body;
+    const productIds = items.map((i) => i.productId);
+    const productRows = await db.query(
+      'SELECT id, price, active FROM products WHERE id = ANY($1::uuid[])',
+      [productIds]
+    );
+    const productsById = new Map(productRows.rows.map((p) => [p.id, p]));
+
+    let subtotal = 0;
+    const lineTotals = [];
+    for (const line of items) {
+      const product = productsById.get(line.productId);
+      // A quote does not validate variants: it is a price preview, and
+      // checkout is still the authority on whether a size and colour can
+      // actually be bought.
+      if (!product || !product.active) continue;
+      const lineTotal = product.price * line.qty;
+      subtotal += lineTotal;
+      lineTotals.push({ productId: product.id, lineTotal });
+    }
+
+    const baseShipping = subtotal >= SHIPPING_FREE_THRESHOLD ? 0 : SHIPPING_FLAT_FEE;
+    if (!subtotal) {
+      return res.json({ subtotal: 0, discount: 0, shipping: 0, total: 0, offerCode: null, offerTitle: null });
+    }
+
+    const offer = await findUsableOffer(null, offerCode);
+    const priced = applyOffer(offer, subtotal, lineTotals, baseShipping);
+    res.json({
+      subtotal,
+      discount: priced.discount,
+      shipping: priced.shipping,
+      total: subtotal - priced.discount + priced.shipping,
+      offerCode: priced.offerCode,
+      offerTitle: priced.title,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
 
 /**
  * Creates an order in PENDING_PAYMENT status. Every price used here comes
@@ -297,7 +354,48 @@ router.post('/track', trackOrderLimiter, validateBody(trackOrderSchema), async (
       [order.id]
     );
     const { id, ...publicOrder } = order; // never expose the internal primary key to the client
-    res.json({ order: { ...publicOrder, items: itemsResult.rows } });
+    // Drives the Cancel control on the tracking page. The server decides
+    // whether cancelling is possible; the page only decides whether to draw
+    // a button, and POST /cancel re-checks regardless.
+    res.json({ order: { ...publicOrder, items: itemsResult.rows, canCancel: isCancellable(order) } });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * Customer-initiated cancellation from the tracking page.
+ *
+ * Proves ownership exactly the way /track does, with the email on the order
+ * plus its display id, behind the same tight rate limit, and answers a
+ * mismatch with the same generic not-found so this cannot be used to test
+ * which emails have placed orders.
+ *
+ * Cancelling a paid order does NOT refund it here. It files a refund request
+ * for a human to approve, and the response says so in those words.
+ */
+router.post('/cancel', trackOrderLimiter, validateBody(cancelOrderSchema), async (req, res, next) => {
+  try {
+    const { email, displayId } = req.body;
+    const orderResult = await db.query(
+      'SELECT id FROM orders WHERE lower(customer_email) = lower($1) AND display_id = $2',
+      [email, displayId]
+    );
+    if (!orderResult.rows.length) {
+      return res.status(404).json({ error: 'No matching order found. Double check the email and order ID.' });
+    }
+
+    const outcome = await cancelOrder(orderResult.rows[0].id);
+    res.json({
+      ok: true,
+      displayId: outcome.order.display_id,
+      status: outcome.order.status,
+      refundRequested: Boolean(outcome.refund),
+      refundRequestId: outcome.refund ? outcome.refund.displayId : null,
+      message: outcome.refund
+        ? 'Your order is cancelled. A refund of what you paid has been sent to our team for review, and you will get an email with the decision.'
+        : 'Your order is cancelled. Nothing was charged, so there is no refund to process.',
+    });
   } catch (err) {
     next(err);
   }

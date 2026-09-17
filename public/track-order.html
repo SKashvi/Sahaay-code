@@ -53,6 +53,15 @@
       <h3>Order <span data-order-id-out></span></h3>
       <div class="status-track" data-status-track></div>
       <div data-order-items-out></div>
+
+      <!-- Shown only when the server says this order is still cancellable.
+           The button is drawn from order.canCancel; POST /api/orders/cancel
+           checks the status again regardless of what the page decided. -->
+      <div data-cancel-panel hidden style="margin-top:18px;">
+        <button type="button" class="btn-secondary" data-cancel-order>Cancel this order</button>
+        <span class="offer-message" data-cancel-message role="status" aria-live="polite"></span>
+      </div>
+
       <button type="button" class="btn-secondary" data-return-toggle style="margin-top:18px;">Report an issue with this order</button>
 
       <div data-return-panel hidden style="margin-top:20px; padding-top:20px; border-top:1px solid var(--border);">

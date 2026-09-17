@@ -35,6 +35,13 @@ const checkoutSchema = z.object({
   }),
 });
 
+/* The checkout summary's offer preview. Same cart shape as checkout, minus
+ * the customer and the idempotency key, because nothing is created. */
+const quoteSchema = z.object({
+  items: z.array(cartLine).min(1).max(50),
+  offerCode: z.string().trim().max(80).optional().nullable(),
+});
+
 const verifyPaymentSchema = z.object({
   orderId: z.string().uuid(),
   razorpayOrderId: z.string().min(1),
@@ -43,6 +50,13 @@ const verifyPaymentSchema = z.object({
 });
 
 const trackOrderSchema = z.object({
+  email: z.string().trim().email().max(200),
+  displayId: z.string().trim().min(1).max(40),
+});
+
+/* Cancelling from the tracking page proves the same thing order lookup
+ * proves: the email on the order plus its display id. */
+const cancelOrderSchema = z.object({
   email: z.string().trim().email().max(200),
   displayId: z.string().trim().min(1).max(40),
 });
@@ -202,6 +216,8 @@ const offerUpsertSchema = z.object({
 
 module.exports = {
   checkoutSchema,
+  quoteSchema,
+  cancelOrderSchema,
   requestCodeSchema,
   verifyCodeSchema,
   sessionStateSchema,

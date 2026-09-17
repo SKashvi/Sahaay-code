@@ -62,6 +62,7 @@ const API = {
   checkout: (payload) => apiFetch('/api/orders/checkout', { method: 'POST', body: JSON.stringify(payload) }),
   verifyPayment: (payload) => apiFetch('/api/orders/verify-payment', { method: 'POST', body: JSON.stringify(payload) }),
   trackOrder: (payload) => apiFetch('/api/orders/track', { method: 'POST', body: JSON.stringify(payload) }),
+  cancelOrder: (payload) => apiFetch('/api/orders/cancel', { method: 'POST', body: JSON.stringify(payload) }),
   submitReturn: (payload) => apiFetch('/api/returns', { method: 'POST', body: JSON.stringify(payload) }),
   sendChat: (payload) => apiFetch('/api/chat', { method: 'POST', body: JSON.stringify(payload) }),
   uploadReturnPhoto: async (file) => {
