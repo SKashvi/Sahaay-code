@@ -4,12 +4,14 @@ const db = require('../lib/db');
 const { newId, newDisplayId } = require('../lib/ids');
 const { createRazorpayOrder, verifyPaymentSignature } = require('../lib/razorpay');
 const { validateBody } = require('../middleware/validate');
-const { checkoutSchema, verifyPaymentSchema, trackOrderSchema, quoteSchema, cancelOrderSchema } = require('../schemas');
+const { checkoutSchema, verifyPaymentSchema, trackOrderSchema, quoteSchema, cancelOrderSchema, sessionStateSchema } = require('../schemas');
 const { trackOrderLimiter, checkoutLimiter, offerQuoteLimiter } = require('../middleware/rateLimiters');
 const { notifyOrderConfirmed } = require('../lib/notifications');
 const { RESERVATION_MINUTES, finalizeReservation, releaseReservation } = require('../lib/inventoryReservations');
 const { findUsableOffer, applyOffer, computeRefundRatio, normalizeOfferCode } = require('../lib/offers');
 const { cancelOrder, isCancellable } = require('../lib/cancellation');
+const { buildOrderView } = require('../lib/orderView');
+const { customerForSession } = require('../middleware/customerAuth');
 
 const router = express.Router();
 
@@ -386,6 +388,59 @@ router.post('/cancel', trackOrderLimiter, validateBody(cancelOrderSchema), async
     }
 
     const outcome = await cancelOrder(orderResult.rows[0].id);
+    res.json({
+      ok: true,
+      displayId: outcome.order.display_id,
+      status: outcome.order.status,
+      refundRequested: Boolean(outcome.refund),
+      refundRequestId: outcome.refund ? outcome.refund.displayId : null,
+      message: outcome.refund
+        ? 'Your order is cancelled. A refund of what you paid has been sent to our team for review, and you will get an email with the decision.'
+        : 'Your order is cancelled. Nothing was charged, so there is no refund to process.',
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/* ------------------------- the verified session ------------------------- */
+
+/* Reading an order is a database call, so these two do it as one.
+ *
+ * The widget's "Show order status" used to send a chat message and wait for
+ * the model to call get_order_status, which put a language model, its rate
+ * limit and its bill between a verified customer and a row they are already
+ * entitled to read.
+ *
+ * Identity is the signed httpOnly customer_session cookie, matched against the
+ * session id in the body exactly as /api/session/state does, so a pasted
+ * session id gets nothing without the matching cookie. No rate limiter: this
+ * is one indexed read for a customer who has already proved an email round
+ * trip, and throttling it would reintroduce the dead end this removes.
+ */
+router.post('/mine', validateBody(sessionStateSchema), async (req, res, next) => {
+  try {
+    const customer = customerForSession(req, req.body.sessionId);
+    if (!customer) return res.status(401).json({ error: 'not_verified' });
+
+    const order = await buildOrderView(customer.orderId);
+    // A session is verified against exactly one order, but the panel is built
+    // to render a list so this stays true if that ever changes.
+    res.json({ orders: order ? [order] : [], email: customer.email });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/* The panel's Cancel button. Same identity check as /mine, and the same
+ * cancelOrder as the tracking page and the agent tool, so the rules about
+ * what can be cancelled and what a paid order owes live in one place. */
+router.post('/mine/cancel', validateBody(sessionStateSchema), async (req, res, next) => {
+  try {
+    const customer = customerForSession(req, req.body.sessionId);
+    if (!customer) return res.status(401).json({ error: 'not_verified' });
+
+    const outcome = await cancelOrder(customer.orderId);
     res.json({
       ok: true,
       displayId: outcome.order.display_id,

@@ -9,8 +9,8 @@
     "setup": "node db/setup.js",
     "migrate": "node db/migrate.js",
     "seed": "node db/seed.js",
-    "test": "node test/boot-test.js && node test/agent-loop.test.js && node test/cart-line-key.test.js && node test/photo-scoring.test.js && node test/smoke-test.js && node test/brand-config.test.js && node test/offers-and-roles.test.js && node test/session-verification.test.js && node test/refunds-and-webhooks.test.js && node test/refund-concurrency.test.js && node test/webhook-transaction.test.js && node test/inventory-concurrency.test.js && node test/order-cancellation.test.js && node test/ai-memory.test.js && node test/ai-provider-fallback.test.js",
-    "test:offline": "node test/agent-loop.test.js && node test/cart-line-key.test.js && node test/photo-scoring.test.js && node test/ai-provider-fallback.test.js"
+    "test": "node test/boot-test.js && node test/agent-loop.test.js && node test/cart-line-key.test.js && node test/widget-cart-bridge.test.js && node test/photo-scoring.test.js && node test/smoke-test.js && node test/brand-config.test.js && node test/offers-and-roles.test.js && node test/session-verification.test.js && node test/refunds-and-webhooks.test.js && node test/refund-concurrency.test.js && node test/webhook-transaction.test.js && node test/inventory-concurrency.test.js && node test/order-cancellation.test.js && node test/verified-order-panel.test.js && node test/ai-memory.test.js && node test/ai-provider-fallback.test.js",
+    "test:offline": "node test/agent-loop.test.js && node test/cart-line-key.test.js && node test/widget-cart-bridge.test.js && node test/photo-scoring.test.js && node test/ai-provider-fallback.test.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1126.0",
@@ -30,6 +30,7 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
+    "jsdom": "^30.1.0",
     "supertest": "^7.2.2"
   }
 }

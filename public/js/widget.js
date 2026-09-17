@@ -27,6 +27,20 @@
     activeOrder: null,
     cartSubmitting: false,
     productChoice: {},
+    /* The verified customer's orders, read straight from the orders API. Not
+     * a chat message and not a model output: the panel is the primary path for
+     * anything about an order, and the chat input is for open questions. */
+    orders: null,
+    verifiedEmail: '',
+    ordersLoading: false,
+    ordersError: '',
+    ordersNotice: '',
+    // Which order's return form is open, and what is selected in it.
+    returnFor: null,
+    returnReason: 'Wrong size',
+    returnItems: {},
+    returnSubmitting: false,
+    returnError: '',
   };
   let host = null;
   let shadow = null;
@@ -227,6 +241,7 @@
     if (state.view === 'track') body.innerHTML = renderTrack();
     if (state.view === 'cart') body.innerHTML = renderCart();
     if (state.view === 'checkout') body.innerHTML = renderCheckout();
+    if (state.view === 'orders') body.innerHTML = renderOrders();
     wire();
     scrollToLatest();
   }
@@ -292,6 +307,9 @@
     // retyped with a space in it and then refused at the till.
     if (block.type === 'offers') return `<section class="vw-card"><div class="vw-card-title">Offers</div><div class="vw-offers">${(block.items || []).map((o) => `<div class="vw-offer"><strong>${ESC(o.title)}</strong>${o.code ? `<code class="vw-offer-code">${ESC(String(o.code).replace(/\s+/g, ''))}</code>` : ''}${o.minSpend ? `<span class="vw-offer-min">over ${ESC(o.minSpend)}</span>` : ''}<span class="vw-offer-copy">${ESC(o.description || '')}</span></div>`).join('')}</div></section>`;
     if (block.type === 'order') return renderOrder(block.order);
+    // The same panel the orders view renders, so an answer in chat and the
+    // panel itself cannot look like two different features.
+    if (block.type === 'orders') return (block.orders || []).map((order) => renderOrderPanel(order)).join('');
     if (block.type === 'verify') return renderVerify(block);
     if (block.type === 'proposal') return `<section class="vw-card vw-proposal"><div class="vw-card-title">Sent for review</div><div>Request <strong>${ESC(block.proposal?.displayId || '')}</strong> is pending human review.</div><div class="vw-empty">It is not approved yet. We will use the review decision to update you.</div></section>`;
     if (block.type === 'upload') return `<section class="vw-upload"><strong>Photo needed</strong><div class="vw-empty">Attach a clear JPEG, PNG, or WEBP photo using the paperclip beside the message field.</div><button type="button" class="vw-btn secondary" data-action="attach">Attach photo</button></section>`;
@@ -416,11 +434,6 @@
   function addProductToCart(ref) {
     const product = productRefs[Number(ref)];
     if (!product) return;
-    if (!window.Cart || typeof window.Cart.add !== 'function') {
-      state.messages.push({ role: 'assistant', text: 'The cart is only available on the storefront right now.' });
-      render();
-      return;
-    }
 
     const { size, color } = productOptions(product);
     const line = cartLineFor(product, size, color);
@@ -428,12 +441,19 @@
     // the same door, because an unbuyable line fails at checkout, not here.
     if (!line) return;
 
-    window.Cart.add(
+    const written = cartStore.add(
       { id: line.productId, name: line.name, price: line.price, imageUrl: line.imageUrl },
       line.size,
       line.color,
       line.qty
     );
+    if (!written) {
+      // Only reachable when storage itself refused the write. Saying so beats
+      // a button that flashes "Added" over a cart that stayed empty.
+      state.messages.push({ role: 'assistant', text: 'Your browser is blocking storage, so I could not save that to the cart.' });
+      render();
+      return;
+    }
     flashAdded(ref);
     refreshCart();
   }
@@ -463,18 +483,174 @@
     return `<section class="vw-card"><div class="vw-card-title">Verify your order</div><div class="vw-empty">${message}</div><div class="vw-field vw-code-field"><input class="vw-code" maxlength="6" inputmode="numeric" autocomplete="one-time-code" data-verify-code placeholder="000000"></div><button type="button" class="vw-btn" data-action="verify-code" ${state.verifying ? 'disabled' : ''}>Verify</button><div class="vw-empty" data-verify-msg></div></section>`;
   }
 
+  /* One order, with the progress steps the storefront's tracking page draws
+   * and the actions that apply to its current state. Every button behind it
+   * calls an API directly: none of them go through the chat, so none of them
+   * can be blocked by the model being slow, rate limited or down. */
+  function renderOrderPanel(order) {
+    if (!order) return '';
+    const cancelled = order.status === 'CANCELLED';
+    const stages = order.stages || [];
+    const labels = order.stageLabels || {};
+
+    const track = cancelled
+      ? '<div class="vw-order-cancelled">This order was cancelled.</div>'
+      : `<div class="vw-steps">${stages.map((stage, index) => {
+          const cls = index < order.stageIndex ? 'done' : index === order.stageIndex ? 'current' : '';
+          return `<div class="vw-step ${cls}"><span class="vw-step-dot"></span><span class="vw-step-label">${ESC(labels[stage] || stage)}</span></div>`;
+        }).join('')}</div>`;
+
+    const items = (order.items || []).map((item) => `<div class="vw-order-item"><span>${ESC(item.name)} · ${ESC(item.size)} · ${ESC(item.color)} × ${ESC(item.qty)}</span><span>${ESC(item.price)}</span></div>`).join('');
+
+    const tracking = order.tracking
+      ? `<div class="vw-order-tracking">Tracking: ${ESC(order.tracking.carrier || '')} ${ESC(order.tracking.number || '')}${SAFE_URL(order.tracking.url) ? ` · <a class="vw-link" href="${ESC(SAFE_URL(order.tracking.url))}" target="_blank" rel="noopener noreferrer">Open tracking</a>` : ''}</div>`
+      : '<div class="vw-empty vw-order-tracking">Tracking is not available yet.</div>';
+
+    // Drawn from what the server said, and every endpoint behind them checks
+    // again, so a stale panel cannot cancel something it should not.
+    const actions = [
+      `<button type="button" class="vw-btn secondary" data-action="order-track" data-order="${ESC(order.displayId)}">Track</button>`,
+      order.canCancel ? `<button type="button" class="vw-btn secondary" data-action="order-cancel" data-order="${ESC(order.displayId)}">Cancel order</button>` : '',
+      order.canRequestReturn ? `<button type="button" class="vw-btn secondary" data-action="order-return" data-order="${ESC(order.displayId)}">Return items</button>` : '',
+      `<button type="button" class="vw-btn secondary" data-action="order-issue" data-order="${ESC(order.displayId)}">Report an issue</button>`,
+    ].filter(Boolean).join('');
+
+    return `<section class="vw-card"><div class="vw-card-title">Order ${ESC(order.displayId)}</div><div class="vw-status">${ESC(order.statusLabel || order.status)}</div>${track}${items}<div class="vw-order-total"><span>Total</span><strong>${ESC(order.total || '')}</strong></div>${tracking}<div class="vw-actions">${actions}</div>${renderReturnForm(order)}</section>`;
+  }
+
+  /* Opened by Return or Report an issue. Posts to /api/returns directly, with
+   * the email taken from the verified session rather than a field. */
+  function renderReturnForm(order) {
+    if (state.returnFor !== order.displayId) return '';
+    const reasons = ['Wrong size', 'Damaged item', 'Not as described', 'Changed my mind'];
+    const rows = (order.items || []).map((item) => `<label class="vw-return-row"><input type="checkbox" data-return-item="${ESC(item.itemId)}"${state.returnItems[item.itemId] ? ' checked' : ''}> <span>${ESC(item.name)} · ${ESC(item.size)} · ${ESC(item.color)}</span></label>`).join('');
+    return `<div class="vw-return-form"><div class="vw-card-title">What went wrong?</div>${rows}<div class="vw-field"><label for="vw-return-reason">Reason</label><select id="vw-return-reason" data-return-reason>${reasons.map((r) => `<option value="${ESC(r)}"${r === state.returnReason ? ' selected' : ''}>${ESC(r)}</option>`).join('')}</select></div>${state.attachmentUrl ? `<div class="vw-attachment">Photo attached: ${ESC(state.attachmentName || 'photo')}</div>` : '<button type="button" class="vw-btn secondary vw-return-attach" data-action="attach">Attach a photo</button>'}<div class="vw-actions"><button type="button" class="vw-btn" data-action="return-submit"${state.returnSubmitting ? ' disabled' : ''}>${state.returnSubmitting ? 'Sending...' : 'Send for review'}</button><button type="button" class="vw-btn secondary" data-action="return-cancel">Not now</button></div>${state.returnError ? `<div class="vw-order-error">${ESC(state.returnError)}</div>` : ''}<div class="vw-empty">This is a request. A person reviews it and emails you the decision.</div></div>`;
+  }
+
+  function renderOrders() {
+    if (!state.verified) {
+      return `<section class="vw-card"><div class="vw-card-title">Your orders</div><div class="vw-empty">Verify your email to see an order.</div><div class="vw-actions"><button class="vw-btn" data-action="track">Verify</button></div></section>`;
+    }
+    let html = '';
+    if (state.ordersNotice) html += `<div class="vw-order-notice">${ESC(state.ordersNotice)}</div>`;
+    if (state.ordersError) html += `<div class="vw-order-error">${ESC(state.ordersError)}</div>`;
+    if (state.ordersLoading && !state.orders) {
+      html += '<section class="vw-card"><div class="vw-empty">Loading your order...</div></section>';
+      return html;
+    }
+    if (state.orders && state.orders.length) {
+      html += state.orders.map((order) => renderOrderPanel(order)).join('');
+    } else if (state.orders) {
+      html += '<section class="vw-card"><div class="vw-card-title">Your orders</div><div class="vw-empty">We could not find an order for this session.</div></section>';
+    }
+    html += `<div class="vw-actions"><button class="vw-btn secondary" data-action="refresh-order">Refresh</button><button class="vw-btn secondary" data-action="back-to-chat">Ask a question</button><button class="vw-btn secondary" data-action="signout">Sign out</button></div>`;
+    return html;
+  }
+
   function renderTrack() {
-    if (state.verified) return `<section class="vw-card"><div class="vw-card-title">Signed in</div><div class="vw-empty">Orders are linked to this session.</div><div class="vw-actions"><button class="vw-btn" data-action="refresh-order">Show order status</button><button class="vw-btn secondary" data-action="signout">Sign out</button></div></section>`;
+    if (state.verified) return `<section class="vw-card"><div class="vw-card-title">Signed in</div><div class="vw-empty">Your order is linked to this session.</div><div class="vw-actions"><button class="vw-btn" data-action="refresh-order">Show order status</button><button class="vw-btn secondary" data-action="signout">Sign out</button></div></section>`;
     return `<section class="vw-card"><div class="vw-card-title">Track orders</div><div class="vw-field"><label>Email used at checkout</label><input type="email" data-track-email value="${ESC(state.trackEmail)}"></div><div class="vw-field"><label>Order ID</label><input data-track-order value="${ESC(state.trackOrderId)}" placeholder="VEL-XXXXXX"></div>${state.codeSent ? `<div class="vw-field"><label>Six digit code</label><input class="vw-code" data-track-code maxlength="6" inputmode="numeric"></div><div class="vw-actions"><button class="vw-btn" data-action="track-verify">Verify code</button></div>` : `<button class="vw-btn" data-action="request-code">Email me a code</button>`}<div class="vw-empty" data-track-msg></div></section>`;
   }
 
-  /* The storefront and the widget write to one localStorage cart through the
-   * same window.Cart, but they render from it at different moments. Anything
-   * held between renders goes stale the instant the other one changes it, so
-   * the cart is re-read at the point of use and never carried: when the panel
-   * opens, after an add, and whenever api.js announces a change. */
+  /* ------------------------------ the cart ------------------------------ */
+
+  /* The widget must not depend on the host page having a cart.
+   *
+   * On this project's own storefront, api.js owns the cart. On a client site
+   * the embed is the only script we control: there is no api.js, no window.API
+   * and no window.Cart, and a widget that assumed otherwise would write to
+   * nothing. So the adapter resolves a backend per call, in order of how
+   * authoritative it is:
+   *
+   *   1. window.SahaayCart, a bridge a host page can implement to own the
+   *      cart itself (a React store, a Shopify cart, anything).
+   *   2. window.Cart, which is this project's own api.js.
+   *   3. localStorage under the same key api.js uses, driven from here.
+   *
+   * Resolved per call rather than once at load, because the widget script can
+   * execute before the page's own scripts have defined either global.
+   *
+   * The third path is what makes a standalone embed work, and it is the same
+   * storage api.js reads, so the two stay in agreement whenever both exist.
+   */
+  const CART_KEY = 'velour_cart';
+
+  function cartBridge() {
+    const bridge = window.SahaayCart;
+    if (bridge && typeof bridge.get === 'function' && typeof bridge.add === 'function') return bridge;
+    const host = window.Cart;
+    if (host && typeof host.get === 'function' && typeof host.add === 'function') return host;
+    return null;
+  }
+
+  function localCartRead() {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(CART_KEY) || '[]');
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (err) {
+      // Private browsing, a blocked origin, or something else's data under the
+      // same key. An empty cart is the only safe reading.
+      return [];
+    }
+  }
+
+  function localCartWrite(lines) {
+    try {
+      localStorage.setItem(CART_KEY, JSON.stringify(lines));
+    } catch (err) {
+      // Storage is unavailable. The line is lost, which the caller surfaces.
+      return false;
+    }
+    // The same event api.js dispatches, so a host page that listens for its
+    // own cart changes sees the widget's writes too.
+    try {
+      document.dispatchEvent(new CustomEvent('velour:cart-change'));
+    } catch (err) { /* very old engines */ }
+    return true;
+  }
+
+  const cartStore = {
+    /* Re-read at the point of use, never held between renders: the storefront
+     * and the widget both write to this and either one goes stale the moment
+     * the other changes it. */
+    get() {
+      const bridge = cartBridge();
+      if (bridge) {
+        try {
+          const lines = bridge.get();
+          return Array.isArray(lines) ? lines : [];
+        } catch (err) {
+          return [];
+        }
+      }
+      return localCartRead();
+    },
+
+    /* Same merge rule as api.js: one line per product/size/colour, quantities
+     * added. Duplicating it is deliberate, because the localStorage path has
+     * no api.js to call. */
+    add(product, size, color, qty) {
+      const bridge = cartBridge();
+      if (bridge) {
+        bridge.add(product, size, color, qty);
+        return true;
+      }
+      const lines = localCartRead();
+      const existing = lines.find((l) => l.productId === product.id && l.size === size && l.color === color);
+      if (existing) existing.qty += qty;
+      else lines.push({ productId: product.id, name: product.name, price: product.price, iconKey: product.iconKey, imageUrl: product.imageUrl, size, color, qty });
+      return localCartWrite(lines);
+    },
+
+    clear() {
+      const bridge = cartBridge();
+      if (bridge && typeof bridge.clear === 'function') { bridge.clear(); return true; }
+      return localCartWrite([]);
+    },
+  };
+
   function cartLines() {
-    return window.Cart && typeof window.Cart.get === 'function' ? window.Cart.get() : [];
+    return cartStore.get();
   }
 
   /* Re-reads and repaints, but only when the panel is actually showing the
@@ -506,12 +682,32 @@
       const data = await request('/api/chat', { method: 'POST', body: JSON.stringify({ sessionId: sessionId(), message: text || '', attachmentUrl: attachmentUrl || undefined }) });
       state.verified = Boolean(data.verified);
       state.messages.push({ role: 'assistant', text: data.reply || 'I could not answer that right now.', blocks: data.blocks || [] });
+      // The server reached us but could not reach the model. For a verified
+      // customer that must not end the road: their order is a database read
+      // this widget can do on its own.
+      if (data.degraded) await fallBackToOrders();
     } catch (err) {
       state.messages.push({ role: 'assistant', text: err.message || 'I am having trouble reaching the assistant right now.' });
+      // Covers the other half: a rate limit or a 5xx, where the request itself
+      // failed. A throttled chat must never block an order lookup.
+      await fallBackToOrders();
     } finally {
       state.sending = false;
       saveHistory();
       render();
+    }
+  }
+
+  /* Called when the model is unreachable. For a verified customer it swaps the
+   * apology for the thing they were almost certainly asking about; for anyone
+   * else it changes nothing, because there is no order to show. */
+  async function fallBackToOrders() {
+    if (!state.verified) return;
+    state.ordersNotice = 'The assistant is unavailable right now, so here is your order directly.';
+    try {
+      await loadOrders({ view: 'orders' });
+    } catch (err) {
+      // loadOrders already records its own error into state.
     }
   }
 
@@ -545,9 +741,12 @@
       const data = await request('/api/session/verify', { method: 'POST', body: JSON.stringify({ sessionId: sessionId(), code }) });
       state.verified = true; state.verifying = false; state.codeSent = false;
       render();
+      state.verifiedEmail = data.email || state.verifiedEmail;
       state.messages.push({ role: 'assistant', text: `Verified for order ${data.orderDisplayId}.` });
       saveHistory();
-      render();
+      // Straight to the panel: verifying is the moment they wanted the order,
+      // and reading it costs one database call, not a model round trip.
+      await loadOrders({ view: 'orders' });
     } catch (err) {
       state.verifying = false;
       if (messageEl) messageEl.textContent = err.message;
@@ -559,17 +758,140 @@
     try {
       const data = await request('/api/session/state', { method: 'POST', body: JSON.stringify({ sessionId: sessionId() }) });
       state.verified = Boolean(data.verified);
+      state.verifiedEmail = data.email || '';
     } catch (err) { state.verified = false; }
   }
 
+  /* ---------------------------- orders panel ---------------------------- */
+
+  /* Reading an order is a database call. This used to post "Show me my order
+   * status" into the chat and wait for the model to decide to call a tool,
+   * which put a language model, its rate limit and its bill between a verified
+   * customer and a row they had already proved they can read. */
+  async function loadOrders({ view } = {}) {
+    if (view) state.view = view;
+    state.ordersLoading = true;
+    state.ordersError = '';
+    render();
+    try {
+      const data = await request('/api/orders/mine', {
+        method: 'POST',
+        body: JSON.stringify({ sessionId: sessionId() }),
+      });
+      state.orders = data.orders || [];
+      state.verifiedEmail = data.email || state.verifiedEmail;
+      state.verified = true;
+    } catch (err) {
+      // A 401 here means the cookie expired since the panel was drawn.
+      if (/not_verified/i.test(err.message || '')) {
+        state.verified = false;
+        state.orders = null;
+        state.ordersError = 'Your session expired. Verify again to see your order.';
+      } else {
+        state.ordersError = err.message || 'Could not load your order right now.';
+      }
+    } finally {
+      state.ordersLoading = false;
+      render();
+    }
+  }
+
   async function showOrderStatus() {
-    state.view = 'chat';
-    await sendChat('Show me my order status');
+    state.ordersNotice = '';
+    await loadOrders({ view: 'orders' });
+  }
+
+  async function cancelVerifiedOrder(displayId) {
+    const order = (state.orders || []).find((o) => o.displayId === displayId);
+    if (!order) return;
+    // Cancelling cannot be undone and, on a paid order, starts a refund
+    // review. One deliberate confirmation rather than a single mis-click.
+    const warning = order.status === 'PENDING_PAYMENT'
+      ? `Cancel order ${order.displayId}? Nothing has been charged.`
+      : `Cancel order ${order.displayId}? A refund of what you paid will be sent to our team for review.`;
+    if (!window.confirm(warning)) return;
+
+    state.ordersLoading = true;
+    state.ordersError = '';
+    render();
+    try {
+      const result = await request('/api/orders/mine/cancel', {
+        method: 'POST',
+        body: JSON.stringify({ sessionId: sessionId() }),
+      });
+      state.ordersNotice = result.message || 'Your order is cancelled.';
+      // Re-read rather than patching in place, so the steps and the buttons
+      // both come from what the server now holds.
+      await loadOrders();
+      return;
+    } catch (err) {
+      state.ordersError = err.message || 'That order could not be cancelled.';
+    } finally {
+      state.ordersLoading = false;
+      render();
+    }
+  }
+
+  function openReturnForm(displayId, reason) {
+    state.returnFor = displayId;
+    state.returnReason = reason || 'Wrong size';
+    state.returnItems = {};
+    state.returnError = '';
+    state.ordersNotice = '';
+    state.view = 'orders';
+    render();
+  }
+
+  async function submitReturn() {
+    const order = (state.orders || []).find((o) => o.displayId === state.returnFor);
+    if (!order) return;
+    const items = Object.keys(state.returnItems)
+      .filter((itemId) => state.returnItems[itemId])
+      .map((itemId) => ({ orderItemId: itemId, quantity: 1 }));
+    if (!items.length) {
+      state.returnError = 'Pick at least one item.';
+      render();
+      return;
+    }
+
+    state.returnSubmitting = true;
+    state.returnError = '';
+    render();
+    try {
+      // Straight to /api/returns, the same endpoint the tracking page posts
+      // to. The email comes from the verified session, not from a field the
+      // customer could point at someone else's order.
+      const result = await request('/api/returns', {
+        method: 'POST',
+        body: JSON.stringify({
+          displayId: order.displayId,
+          email: state.verifiedEmail,
+          items,
+          reason: state.returnReason,
+          description: '',
+          photoUrl: state.attachmentUrl || undefined,
+        }),
+      });
+      state.returnFor = null;
+      state.returnItems = {};
+      state.attachmentUrl = null;
+      state.attachmentName = '';
+      state.ordersNotice = `Request ${result.displayId} has been sent for review. You will get an email with the decision.`;
+      await loadOrders();
+      return;
+    } catch (err) {
+      state.returnError = err.message || 'That request could not be sent.';
+    } finally {
+      state.returnSubmitting = false;
+      render();
+    }
   }
 
   async function signout() {
     await request('/api/session/signout', { method: 'POST', body: JSON.stringify({}) });
     state.verified = false; state.activeOrder = null; state.codeSent = false; state.messages = [];
+    state.orders = null; state.verifiedEmail = ''; state.ordersNotice = ''; state.ordersError = ''; state.returnFor = null;
+    state.view = 'chat';
     // Clears the stored copy as well, otherwise signing out empties the panel
     // and the next page brings the whole conversation back.
     saveHistory();
@@ -614,7 +936,7 @@
                 razorpaySignature: response.razorpay_signature,
               }),
             });
-            if (window.Cart && typeof window.Cart.clear === 'function') window.Cart.clear();
+            cartStore.clear();
             state.cartSubmitting = false;
             state.view = 'chat';
             state.messages.push({ role: 'assistant', text: `Payment received. Your order ${order.displayId} is confirmed.` });
@@ -652,11 +974,34 @@
     shadow.querySelectorAll('[data-action="add-to-cart"]').forEach((el) => el.addEventListener('click', () => addProductToCart(el.getAttribute('data-product'))));
     shadow.querySelectorAll('[data-chip]').forEach((el) => el.addEventListener('click', () => selectChip(el)));
     shadow.querySelector('[data-action="cart"]')?.addEventListener('click', () => { state.view = 'cart'; render(); });
-    shadow.querySelector('[data-action="track"]')?.addEventListener('click', () => { state.view = 'track'; render(); });
+    shadow.querySelector('[data-action="track"]')?.addEventListener('click', () => {
+      // Already verified means there is nothing to ask for: show the order.
+      if (state.verified) { showOrderStatus(); return; }
+      state.view = 'track';
+      render();
+    });
     shadow.querySelector('[data-action="request-code"]')?.addEventListener('click', requestCode);
     shadow.querySelector('[data-action="track-verify"]')?.addEventListener('click', () => verifyDirect(shadow.querySelector('[data-track-code]').value.trim(), shadow.querySelector('[data-track-msg]')));
     shadow.querySelector('[data-action="signout"]')?.addEventListener('click', signout);
     shadow.querySelector('[data-action="refresh-order"]')?.addEventListener('click', showOrderStatus);
+    shadow.querySelector('[data-action="back-to-chat"]')?.addEventListener('click', () => { state.view = 'chat'; render(); });
+    // Every order action is a direct API call. None of them send a chat
+    // message, so none of them can be blocked by the model.
+    shadow.querySelectorAll('[data-action="order-track"]').forEach((el) => el.addEventListener('click', () => {
+      state.ordersNotice = '';
+      loadOrders();
+    }));
+    shadow.querySelectorAll('[data-action="order-cancel"]').forEach((el) => el.addEventListener('click', () => cancelVerifiedOrder(el.getAttribute('data-order'))));
+    shadow.querySelectorAll('[data-action="order-return"]').forEach((el) => el.addEventListener('click', () => openReturnForm(el.getAttribute('data-order'), 'Wrong size')));
+    shadow.querySelectorAll('[data-action="order-issue"]').forEach((el) => el.addEventListener('click', () => openReturnForm(el.getAttribute('data-order'), 'Damaged item')));
+    shadow.querySelectorAll('[data-return-item]').forEach((el) => el.addEventListener('change', () => {
+      state.returnItems[el.getAttribute('data-return-item')] = el.checked;
+    }));
+    shadow.querySelector('[data-return-reason]')?.addEventListener('change', (event) => { state.returnReason = event.target.value; });
+    shadow.querySelector('[data-action="return-submit"]')?.addEventListener('click', submitReturn);
+    shadow.querySelector('[data-action="return-cancel"]')?.addEventListener('click', () => {
+      state.returnFor = null; state.returnError = ''; render();
+    });
     shadow.querySelector('[data-action="checkout"]')?.addEventListener('click', () => { state.view = 'checkout'; render(); });
     shadow.querySelector('[data-action="verify-code"]')?.addEventListener('click', () => {
       const code = shadow.querySelector('[data-verify-code]').value.trim();
@@ -664,9 +1009,12 @@
     });
     shadow.querySelector('[data-checkout-form]')?.addEventListener('submit', async (event) => {
       event.preventDefault();
-      if (!window.API || typeof window.API.checkout !== 'function') {
-        shadow.querySelector('[data-checkout-msg]').textContent = 'Checkout is available on the storefront widget.'; return;
-      }
+      // window.API was undefined for the same reason window.Cart was, and on a
+      // standalone embed there is no api.js to provide it at all. The widget's
+      // own request() reaches the same endpoint either way.
+      const checkout = (payload) => (window.API && typeof window.API.checkout === 'function')
+        ? window.API.checkout(payload)
+        : request('/api/orders/checkout', { method: 'POST', body: JSON.stringify(payload) });
       state.cartSubmitting = true; render();
       try {
         const values = Object.fromEntries(new FormData(shadow.querySelector('[data-checkout-form]')).entries());
@@ -676,7 +1024,7 @@
         // charged.
         const offerCode = (values.offerCode || '').trim();
         delete values.offerCode;
-        const order = await window.API.checkout({ idempotencyKey: crypto.randomUUID(), items: cart.map((l) => ({ productId: l.productId, size: l.size, color: l.color, qty: l.qty })), customer: values, offerCode: offerCode || undefined });
+        const order = await checkout({ idempotencyKey: crypto.randomUUID(), items: cart.map((l) => ({ productId: l.productId, size: l.size, color: l.color, qty: l.qty })), customer: values, offerCode: offerCode || undefined });
         await openRazorpay(order, values);
       } catch (err) {
         state.cartSubmitting = false; render();

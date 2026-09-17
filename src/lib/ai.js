@@ -203,7 +203,10 @@ async function replyTo({ sessionId, userMessage, attachmentUrl, customer }) {
     }).catch(() => {});
     const text = 'I am having trouble reaching our assistant right now. Please try again in a moment, or use Track orders for help with a specific order.';
     await saveMessage(sessionId, 'assistant', text);
-    return { reply: text, blocks: [] };
+    // Flagged rather than left for the client to recognise by matching this
+    // sentence. A verified customer gets their order panel instead of an
+    // apology, and that decision must not rest on prose someone will reword.
+    return { reply: text, blocks: [], degraded: true };
   }
 
   await saveMessage(sessionId, 'assistant', outcome.text, outcome.blocks);

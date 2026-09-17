@@ -21,6 +21,7 @@ const { newId, newDisplayId, paiseToRupeeString } = require('../ids');
 const { checkOrderEligibility, resolveReturnItems, ReturnEligibilityError, RETURN_WINDOW_DAYS } = require('../returns');
 const { isOwnUploadUrl } = require('../storage');
 const { cancelOrder, isCancellable, CancellationError } = require('../cancellation');
+const { buildOrderView } = require('../orderView');
 const { requestCode } = require('./verification');
 const { scoreInBackground } = require('./photoScoring');
 
@@ -377,51 +378,12 @@ async function requestVerification(args, ctx) {
 async function getOrderStatus(args, ctx) {
   if (!ctx.customer) return { result: NEEDS_VERIFICATION, blocks: [] };
 
-  const orderResult = await db.query(
-    `SELECT display_id AS "displayId", status, total, created_at AS "createdAt",
-            shipped_at AS "shippedAt", delivered_at AS "deliveredAt", cancelled_at AS "cancelledAt",
-            tracking_carrier AS "trackingCarrier", tracking_number AS "trackingNumber", tracking_url AS "trackingUrl"
-       FROM orders WHERE id = $1`,
-    [ctx.customer.orderId]
-  );
-  if (!orderResult.rows.length) return { result: { error: 'not_found' }, blocks: [] };
+  // The same view the widget's orders panel renders, so what the agent says
+  // and what the panel shows cannot drift apart.
+  const payload = await buildOrderView(ctx.customer.orderId);
+  if (!payload) return { result: { error: 'not_found' }, blocks: [] };
 
-  const order = orderResult.rows[0];
-  const itemsResult = await db.query(
-    `SELECT id AS "itemId", name, size, color, qty, price FROM order_items WHERE order_id = $1`,
-    [ctx.customer.orderId]
-  );
-
-  const items = itemsResult.rows.map((row) => ({
-    itemId: row.itemId,
-    name: row.name,
-    size: row.size,
-    color: row.color,
-    qty: row.qty,
-    price: paiseToRupeeString(row.price),
-  }));
-
-  const returnable = order.status === 'DELIVERED' && order.deliveredAt
-    && (Date.now() - new Date(order.deliveredAt).getTime()) < RETURN_WINDOW_DAYS * 86400000;
-
-  const payload = {
-    displayId: order.displayId,
-    status: order.status,
-    total: paiseToRupeeString(order.total),
-    placedAt: order.createdAt,
-    tracking: order.trackingNumber
-      ? { carrier: order.trackingCarrier, number: order.trackingNumber, url: order.trackingUrl }
-      : null,
-    items,
-    canRequestReturn: returnable,
-    // One source of truth for "is this still cancellable", shared with the
-    // tracking page and with cancel_order itself.
-    canCancel: isCancellable(order),
-    canRequestCancellation: isCancellable(order),
-    returnWindowDays: RETURN_WINDOW_DAYS,
-  };
-
-  return { result: payload, blocks: [{ type: 'order', order: payload }] };
+  return { result: payload, blocks: [{ type: 'orders', orders: [payload] }] };
 }
 
 async function proposeReturn(args, ctx) {

@@ -33,6 +33,9 @@ router.post('/', chatLimiter, validateBody(chatSchema), async (req, res, next) =
       blocks: outcome.blocks || [],
       verified: Boolean(customer),
       orderDisplayId: customer ? customer.orderDisplayId : null,
+      // True when the model could not be reached at all. The widget uses it to
+      // show a verified customer their order rather than an apology.
+      degraded: Boolean(outcome.degraded),
     });
   } catch (err) {
     next(err);

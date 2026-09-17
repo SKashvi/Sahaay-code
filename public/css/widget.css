@@ -32,6 +32,9 @@
   /* What sits on top of an accent fill. The surface colour, because that is
    * what every accent-filled control in this file already used. */
   --vw-accent-contrast: var(--vw-surface);
+  /* Refusals and failures. Matches --danger in css/main.css so the storefront
+   * and the widget report a problem in the same colour. */
+  --vw-danger: #C4453F;
 
   --vw-radius-sm: calc(var(--vw-radius) / 2);
   --vw-radius-md: var(--vw-radius);
@@ -318,6 +321,46 @@ button, input, select, textarea { font: inherit; }
 .vw-status { font-weight: 800; color: var(--vw-accent); }
 .vw-link { color: var(--vw-accent); font-weight: 700; }
 .vw-order-tracking { margin-top: 9px; }
+
+/* ------------------------- the orders panel ------------------------- */
+/* The same five steps the storefront's tracking page draws, laid out
+ * vertically because the widget panel is narrow. */
+.vw-steps { display: flex; flex-direction: column; gap: var(--vw-space-1); margin: var(--vw-space-3) 0; }
+.vw-step { display: flex; align-items: center; gap: var(--vw-space-2); font-size: var(--vw-font-size-xs); color: var(--vw-text-muted); }
+.vw-step-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--vw-border);
+  flex: none;
+  box-shadow: 0 0 0 2px transparent;
+}
+.vw-step.done .vw-step-dot { background: color-mix(in srgb, var(--vw-accent) 55%, var(--vw-surface)); }
+.vw-step.done .vw-step-label { color: var(--vw-text); }
+.vw-step.current .vw-step-dot { background: var(--vw-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--vw-accent) 22%, transparent); }
+.vw-step.current .vw-step-label { color: var(--vw-text); font-weight: 800; }
+.vw-order-total { display: flex; justify-content: space-between; padding-top: var(--vw-space-2); margin-top: var(--vw-space-2); border-top: 1px solid var(--vw-border); font-size: var(--vw-font-size-sm); }
+.vw-order-cancelled {
+  margin: var(--vw-space-3) 0;
+  padding: var(--vw-space-2) var(--vw-space-3);
+  border-radius: var(--vw-radius-sm);
+  background: color-mix(in srgb, var(--vw-text) 6%, transparent);
+  font-size: var(--vw-font-size-xs);
+}
+.vw-order-notice, .vw-order-error {
+  padding: var(--vw-space-2) var(--vw-space-3);
+  border-radius: var(--vw-radius-sm);
+  font-size: var(--vw-font-size-xs);
+  line-height: 1.5;
+}
+.vw-order-notice { background: color-mix(in srgb, var(--vw-accent) 12%, var(--vw-surface)); color: var(--vw-text); }
+.vw-order-error { background: color-mix(in srgb, var(--vw-danger) 12%, var(--vw-surface)); color: var(--vw-danger); margin-top: var(--vw-space-2); }
+
+/* The return form, opened from Return or Report an issue. */
+.vw-return-form { margin-top: var(--vw-space-3); padding-top: var(--vw-space-3); border-top: 1px solid var(--vw-border); }
+.vw-return-row { display: flex; align-items: center; gap: var(--vw-space-2); padding: var(--vw-space-1) 0; font-size: var(--vw-font-size-xs); cursor: pointer; }
+.vw-return-row input { flex: none; }
+.vw-return-attach { width: 100%; margin-top: var(--vw-space-2); font-size: var(--vw-font-size-xs); }
 .vw-actions { display: flex; gap: var(--vw-space-2); flex-wrap: wrap; margin-top: var(--vw-space-3); }
 .vw-btn { border: 0; border-radius: var(--vw-radius-sm); background: var(--vw-accent); color: var(--vw-accent-contrast); padding: var(--vw-space-3); cursor: pointer; font-weight: 800; }
 .vw-btn.secondary { background: var(--vw-secondary); }

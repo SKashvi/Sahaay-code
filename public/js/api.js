@@ -117,6 +117,27 @@ const Cart = {
   clear: () => writeCart([]),
 };
 
+/* The host page contract, stated rather than assumed.
+ *
+ * This file is loaded as a classic script, so `const Cart` above lives in
+ * script scope and never becomes a property of window. Every same-page
+ * consumer (app.js, admin.js) is also a classic script and picks it up through
+ * the shared global lexical scope, so this went unnoticed. The chat widget
+ * runs inside an IIFE and reaches for window.Cart, which was undefined, so its
+ * cart silently read as empty and its Add button wrote nowhere.
+ *
+ * API and the formatting helpers are exported for the same reason: the widget
+ * already reads window.API and window.formatPaise. formatPaise happened to
+ * work, because a function declaration does become a window property; a const
+ * object does not. Assigning both here removes that distinction as a thing
+ * anyone has to know.
+ */
+window.Cart = Cart;
+window.API = API;
+window.API_CART_KEY = CART_KEY;
+window.formatPaise = formatPaise;
+window.escapeHtml = escapeHtml;
+
 function refreshCartBadges() {
   const count = Cart.count();
   document.querySelectorAll('[data-nav-cart-badge], [data-vw-cart-badge]').forEach((el) => {
