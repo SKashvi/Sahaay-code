@@ -12,6 +12,40 @@
 
 const DEFAULT_MAX_ITERATIONS = 4;
 
+/* search_catalog and suggest_add_ons both emit a products block, and blocks
+ * accumulates across every iteration of the loop, so one turn can end up
+ * carrying several of them and the widget renders the same card grid twice.
+ * They are merged into the first one, in place, so everything else keeps the
+ * position it was produced in. Items are de-duplicated by id, because the
+ * add-ons call routinely returns something the search already showed.
+ */
+function collapseProductBlocks(blocks) {
+  const firstIndex = blocks.findIndex((block) => block && block.type === 'products');
+  if (firstIndex === -1) return blocks;
+
+  const items = [];
+  const seen = new Set();
+  for (const block of blocks) {
+    if (!block || block.type !== 'products') continue;
+    for (const item of block.items || []) {
+      const key = item && item.id != null ? String(item.id) : JSON.stringify(item);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      items.push(item);
+    }
+  }
+
+  const merged = { ...blocks[firstIndex], items };
+  return blocks.reduce((out, block, index) => {
+    if (block && block.type === 'products') {
+      if (index === firstIndex) out.push(merged);
+      return out;
+    }
+    out.push(block);
+    return out;
+  }, []);
+}
+
 /**
  * @returns {{ text, blocks, steps }} steps is the tool names called, in
  * order, which is what the admin conversations view will show later.
@@ -32,8 +66,6 @@ async function runAgent({
   for (let iteration = 0; iteration < maxIterations; iteration++) {
     const isLastIteration = iteration === maxIterations - 1;
 
-    console.log('AGENT ITERATION', iteration + 1, JSON.stringify(working, null, 2));
-    
     const response = await client.complete({
       systemPrompt,
       messages: working,
@@ -47,7 +79,7 @@ async function runAgent({
 
     const toolCalls = response.toolCalls || [];
     if (!toolCalls.length) {
-      return { text: response.text || '', blocks, steps };
+      return { text: response.text || '', blocks: collapseProductBlocks(blocks), steps };
     }
 
     working.push({ role: 'assistant', content: response.text || '', toolCalls });
@@ -74,7 +106,7 @@ async function runAgent({
   // than an empty bubble.
   return {
     text: 'Let me get someone from the team to pick this up with you.',
-    blocks,
+    blocks: collapseProductBlocks(blocks),
     steps,
   };
 }

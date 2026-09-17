@@ -118,6 +118,11 @@ button, input, select, textarea { font: inherit; }
 .vw-product-name { font-weight: 800; font-size: 12px; }
 .vw-product-price { font-weight: 800; color: var(--vw-accent); margin-top: 4px; }
 .vw-product-meta { font-size: 11px; color: var(--vw-muted); margin-top: 4px; }
+.vw-product-size { margin: 8px 0 0; gap: 4px; }
+.vw-product-size label { font-size: 10px; }
+.vw-product-size select { padding: 6px 7px; font-size: 11px; }
+.vw-product-add { width: 100%; margin-top: 8px; padding: 7px 9px; font-size: 11px; }
+.vw-product-added { font-size: 11px; font-weight: 700; color: var(--vw-accent); margin-top: 6px; }
 .vw-offers { display: flex; flex-wrap: wrap; gap: 8px; }
 .vw-offer { border: 1px solid color-mix(in srgb, var(--vw-accent) 36%, transparent); background: var(--vw-surface); border-radius: 999px; padding: 8px 10px; font-size: 11px; }
 .vw-order-item { display: flex; justify-content: space-between; gap: 12px; padding: 7px 0; border-bottom: 1px solid color-mix(in srgb, var(--vw-text) 8%, transparent); font-size: 12px; }

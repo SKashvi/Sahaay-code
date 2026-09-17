@@ -23,10 +23,17 @@
     attachmentName: '',
     activeOrder: null,
     cartSubmitting: false,
+    sizePicker: {},
+    addedProductId: null,
   };
   let host = null;
   let shadow = null;
   let container = null;
+  /* Product cards are rendered from block data, so the click handler needs a
+   * way back to the object behind the button it was given. Rebuilt from
+   * scratch on every chat render, and the index is only ever read between
+   * that render and the next one. */
+  const productRefs = [];
 
   const ESC = (value) => String(value == null ? '' : value).replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
   /* Only http and https URLs are ever written into an attribute. The API
@@ -34,6 +41,16 @@
    * before the value becomes markup. */
   const SAFE_URL = (value) => (typeof value === 'string' && /^https?:\/\//i.test(value) ? value : '');
   const money = (value) => typeof window.formatPaise === 'function' ? window.formatPaise(value) : ('₹' + (Number(value || 0) / 100).toLocaleString('en-IN'));
+  /* The cart stores paise, because renderCart and checkout both divide by
+   * 100. search_catalog blocks carry pricePaise, suggest_add_ons blocks only
+   * carry the formatted string, so that is parsed back when it is all there
+   * is. */
+  const pricePaise = (product) => {
+    const exact = Number(product.pricePaise);
+    if (Number.isFinite(exact)) return exact;
+    const parsed = parseFloat(String(product.price == null ? '' : product.price).replace(/[^0-9.]/g, ''));
+    return Number.isFinite(parsed) ? Math.round(parsed * 100) : 0;
+  };
 
   function sessionId() {
     let id = null;
@@ -160,6 +177,7 @@
 
   function renderChat() {
     const b = state.config;
+    productRefs.length = 0;
     let html = `<section class="vw-welcome">${logoHtml(false)}<div class="vw-welcome-title">${ESC(b.brandName || '')}</div><div class="vw-welcome-copy">${ESC(b.welcomeMessage || b.brandTagline || '')}</div></section>`;
     if (!state.messages.length && (b.suggestedQuestions || []).length) {
       html += '<div class="vw-faqs">' + b.suggestedQuestions.map((q) => `<button class="vw-faq" data-question="${ESC(q)}">${ESC(q)}</button>`).join('') + '</div>';
@@ -175,7 +193,7 @@
     if (!block || !block.type) return '';
     if (block.type === 'products') {
       const items = block.items || [];
-      return `<section class="vw-card"><div class="vw-card-title">${ESC(block.heading || 'Recommended for you')}</div><div class="vw-products">${items.map((p) => `<article class="vw-product">${SAFE_URL(p.imageUrl) ? `<img src="${ESC(SAFE_URL(p.imageUrl))}" alt="${ESC(p.name)}">` : ''}<div class="vw-product-copy"><div class="vw-product-name">${ESC(p.name)}</div><div class="vw-product-price">${ESC(p.price || '')}</div><div class="vw-product-meta">${p.inStock === false ? 'Out of stock' : (p.sizesInStock && p.sizesInStock.length ? 'Sizes: ' + ESC(p.sizesInStock.join(', ')) : 'In stock')}</div></div></article>`).join('')}</div></section>`;
+      return `<section class="vw-card"><div class="vw-card-title">${ESC(block.heading || 'Recommended for you')}</div><div class="vw-products">${items.map(renderProduct).join('')}</div></section>`;
     }
     if (block.type === 'offers') return `<section class="vw-card"><div class="vw-card-title">Offers</div><div class="vw-offers">${(block.items || []).map((o) => `<div class="vw-offer"><strong>${ESC(o.title)}</strong>${o.code ? ` · ${ESC(o.code)}` : ''}<br>${ESC(o.description || '')}</div>`).join('')}</div></section>`;
     if (block.type === 'order') return renderOrder(block.order);
@@ -183,6 +201,62 @@
     if (block.type === 'proposal') return `<section class="vw-card vw-proposal"><div class="vw-card-title">Sent for review</div><div>Request <strong>${ESC(block.proposal?.displayId || '')}</strong> is pending human review.</div><div class="vw-empty">It is not approved yet. We will use the review decision to update you.</div></section>`;
     if (block.type === 'upload') return `<section class="vw-upload"><strong>Photo needed</strong><div class="vw-empty">Attach a clear JPEG, PNG, or WEBP photo using the paperclip beside the message field.</div><button type="button" class="vw-btn secondary" data-action="attach">Attach photo</button></section>`;
     return '';
+  }
+
+  /* One card, with an Add control wired to the same window.Cart the
+   * storefront writes to. A product with several sizes in stock reveals an
+   * inline select on the first click and only goes into the cart on the
+   * second, so a size is never guessed on the customer's behalf. Cards from
+   * suggest_add_ons carry no sizesInStock at all, and those add on one
+   * click. */
+  function renderProduct(p) {
+    const ref = productRefs.push(p) - 1;
+    const sizes = Array.isArray(p.sizesInStock) ? p.sizesInStock : [];
+    const soldOut = p.inStock === false;
+    const picking = !soldOut && sizes.length > 1 && Boolean(state.sizePicker[p.id]);
+    const image = SAFE_URL(p.imageUrl) ? `<img src="${ESC(SAFE_URL(p.imageUrl))}" alt="${ESC(p.name)}">` : '';
+    const meta = soldOut ? 'Out of stock' : (sizes.length ? 'Sizes: ' + ESC(sizes.join(', ')) : 'In stock');
+    const picker = picking
+      ? `<div class="vw-field vw-product-size"><label for="vw-size-${ref}">Size</label><select id="vw-size-${ref}" data-size-select="${ref}">${sizes.map((size) => `<option value="${ESC(size)}">${ESC(size)}</option>`).join('')}</select></div>`
+      : '';
+    const button = soldOut
+      ? ''
+      : `<button type="button" class="vw-btn vw-product-add" data-action="add-to-cart" data-product="${ref}">${picking ? 'Add to cart' : 'Add'}</button>`;
+    const added = state.addedProductId === p.id ? '<div class="vw-product-added">Added to cart</div>' : '';
+    return `<article class="vw-product">${image}<div class="vw-product-copy"><div class="vw-product-name">${ESC(p.name)}</div><div class="vw-product-price">${ESC(p.price || '')}</div><div class="vw-product-meta">${meta}</div>${picker}${button}${added}</div></article>`;
+  }
+
+  /* Reads the size off the revealed select rather than off state, so the
+   * customer's current choice is used even though nothing re-rendered when
+   * they changed it. */
+  function addProductToCart(ref) {
+    const product = productRefs[Number(ref)];
+    if (!product) return;
+    if (!window.Cart || typeof window.Cart.add !== 'function') {
+      state.messages.push({ role: 'assistant', text: 'The cart is only available on the storefront right now.' });
+      render();
+      return;
+    }
+
+    const sizes = Array.isArray(product.sizesInStock) ? product.sizesInStock : [];
+    if (sizes.length > 1 && !state.sizePicker[product.id]) {
+      state.sizePicker[product.id] = true;
+      state.addedProductId = null;
+      render();
+      return;
+    }
+
+    const select = shadow.querySelector(`[data-size-select="${ref}"]`);
+    const size = select ? select.value : (sizes[0] || '');
+    window.Cart.add(
+      { id: product.id, name: product.name, price: pricePaise(product), imageUrl: product.imageUrl },
+      size,
+      product.color || '',
+      1
+    );
+    state.sizePicker[product.id] = false;
+    state.addedProductId = product.id;
+    render();
   }
 
   function renderOrder(order) {
@@ -216,6 +290,7 @@
 
   async function sendChat(text, attachmentUrl = null) {
     state.messages.push({ role: 'user', text: text || (attachmentUrl ? 'I attached a photo.' : '') });
+    state.addedProductId = null;
     state.sending = true;
     state.attachmentUrl = null;
     state.attachmentName = '';
@@ -362,6 +437,7 @@
       try { await uploadPhoto(file); } catch (err) { state.messages.push({ role: 'assistant', text: err.message || 'Could not attach that photo.' }); render(); }
     });
     shadow.querySelectorAll('[data-question]').forEach((el) => el.addEventListener('click', () => sendChat(el.getAttribute('data-question'))));
+    shadow.querySelectorAll('[data-action="add-to-cart"]').forEach((el) => el.addEventListener('click', () => addProductToCart(el.getAttribute('data-product'))));
     shadow.querySelector('[data-action="cart"]')?.addEventListener('click', () => { state.view = 'cart'; render(); });
     shadow.querySelector('[data-action="track"]')?.addEventListener('click', () => { state.view = 'track'; render(); });
     shadow.querySelector('[data-action="request-code"]')?.addEventListener('click', requestCode);

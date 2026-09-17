@@ -36,14 +36,14 @@ const definitions = [
   {
     name: 'search_catalog',
     description:
-      'Search the live product catalog. Use this for any question about what is available, sizing, price, fabric, or stock. Never describe a product from memory, always search first.',
+      'Search the live product catalog. Use this for any question about what is available, sizing, price, fabric, or stock. Never describe a product from memory, always search first. Return the fewest products that answer the question. Use 1 when the customer has described what they want.',
     parameters: {
       type: 'object',
       properties: {
-        query: { type: 'string', description: 'Free text, e.g. "cotton kurta" or "under 2000". Leave empty to list what is in stock.' },
+        query: { type: 'string', description: 'Free text, e.g. "cotton kurta" or "under 2000".' },
         maxPrice: { type: 'integer', description: 'Maximum price in rupees, not paise.' },
         size: { type: 'string', description: 'Filter to products with this size in stock.' },
-        limit: { type: 'integer', description: 'How many products to return, 1 to 6. Default 4.' },
+        limit: { type: 'integer', description: 'How many products to return, 1 to 6. Default 2.' },
       },
       required: [],
     },
@@ -150,7 +150,7 @@ function clampLimit(value, fallback, max) {
 }
 
 async function searchCatalog(args) {
-  const limit = clampLimit(args.limit, 4, 6);
+  const limit = clampLimit(args.limit, 2, 6);
   const query = String(args.query || '').trim();
   const maxPricePaise = Number.isFinite(Number(args.maxPrice)) && Number(args.maxPrice) > 0
     ? Math.round(Number(args.maxPrice) * 100)
