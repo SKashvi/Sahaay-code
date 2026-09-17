@@ -96,6 +96,9 @@ app.get('/readiness', async (req, res) => {
 });
 
 app.use('/api/config', configRoute);
+// The widget asks for GET /api/widget/config. Same router, so the theme and
+// the brand fields cannot drift apart between the two paths.
+app.use('/api/widget', configRoute);
 app.use('/api/products', productsRoute);
 app.use('/api/orders', ordersRoute);
 app.use('/api/returns', returnsRoute);

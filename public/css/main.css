@@ -718,3 +718,24 @@ a { color: inherit; text-decoration: none; }
 .offer-message.ok { color: var(--brand-accent-deep); font-weight: 600; }
 .offer-message.error { color: var(--danger, #c0392b); }
 .summary-row.discount span:last-child { color: var(--brand-accent-deep); font-weight: 600; }
+
+/* --------------------------- widget theme page --------------------------- */
+.theme-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 380px); gap: 24px; align-items: start; }
+.theme-preview { position: sticky; top: 16px; }
+.theme-preview-frame {
+  background: repeating-conic-gradient(var(--lavender) 0% 25%, var(--white) 0% 50%) 50% / 16px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 16px;
+}
+.theme-actions { display: flex; gap: 12px; align-items: center; }
+.colour-field { display: flex; gap: 8px; align-items: center; }
+.colour-field input[type="color"] { flex: none; width: 52px; height: 34px; padding: 2px; }
+/* A colour the admin has not set. The swatch still shows what the widget will
+ * render, so it needs to say that the value is inherited rather than chosen. */
+.colour-field.is-inherited input[type="color"] { opacity: .5; }
+.colour-field.is-inherited::after { content: 'inherited'; font-size: 11px; color: var(--muted); }
+@media (max-width: 900px) {
+  .theme-layout { grid-template-columns: minmax(0, 1fr); }
+  .theme-preview { position: static; }
+}

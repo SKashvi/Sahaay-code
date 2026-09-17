@@ -48,6 +48,7 @@
     <button type="button" class="admin-tab" data-tab="kb">Knowledge base</button>
     <button type="button" class="admin-tab" data-tab="widget">Widget</button>
     <button type="button" class="admin-tab" data-tab="brand">Branding</button>
+    <button type="button" class="admin-tab" data-tab="theme">Widget theme</button>
     <button type="button" class="admin-tab" data-tab="offers">Offers</button>
     <button type="button" class="admin-tab" data-tab="requests">Requests</button>
     <button type="button" class="admin-tab" data-tab="bundles">Bundles</button>
@@ -149,6 +150,53 @@
       <div class="notice full-row" data-brand-form-success hidden>Branding saved. Reload the storefront to see it.</div>
     </form>
     <div class="panel-note">These values drive the chat widget and the storefront. Anything left blank falls back to the deployment's environment defaults.</div>
+  </div>
+
+  <div class="admin-panel" data-panel="theme">
+    <div class="admin-toolbar"><strong>Widget theme</strong></div>
+    <!-- Layer 3 of four. Anything left blank here means "no opinion" and hands
+         that token back to the SAHAAY_* environment variable, then to the
+         built-in default. That is what makes Reset a real reset rather than a
+         second set of hardcoded values. -->
+    <div class="theme-layout">
+      <form class="admin-form-inline" data-theme-form>
+        <div class="form-field"><label>Accent</label><div class="colour-field"><input name="accent" type="color" data-theme-colour><button type="button" class="btn-ghost" data-theme-clear="accent">Clear</button></div></div>
+        <div class="form-field"><label>Text on accent</label><div class="colour-field"><input name="accentInk" type="color" data-theme-colour><button type="button" class="btn-ghost" data-theme-clear="accentInk">Clear</button></div></div>
+        <div class="form-field"><label>Background</label><div class="colour-field"><input name="bg" type="color" data-theme-colour><button type="button" class="btn-ghost" data-theme-clear="bg">Clear</button></div></div>
+        <div class="form-field"><label>Text</label><div class="colour-field"><input name="ink" type="color" data-theme-colour><button type="button" class="btn-ghost" data-theme-clear="ink">Clear</button></div></div>
+        <div class="form-field"><label>Empty state gradient, from</label><div class="colour-field"><input name="tintFrom" type="color" data-theme-colour><button type="button" class="btn-ghost" data-theme-clear="tintFrom">Clear</button></div></div>
+        <div class="form-field"><label>Empty state gradient, to</label><div class="colour-field"><input name="tintTo" type="color" data-theme-colour><button type="button" class="btn-ghost" data-theme-clear="tintTo">Clear</button></div></div>
+        <div class="form-field"><label>Shell radius (px)</label><input name="radiusShell" type="number" min="0" max="64" placeholder="24"></div>
+        <div class="form-field"><label>Card radius (px)</label><input name="radiusCard" type="number" min="0" max="48" placeholder="16"></div>
+        <div class="form-field"><label>Header style</label><select name="headerStyle"><option value="">Default</option><option value="floating">Floating pills</option><option value="solid">Solid bar</option></select></div>
+        <div class="form-field"><label>Density</label><select name="density"><option value="">Default</option><option value="comfortable">Comfortable</option><option value="compact">Compact</option></select></div>
+        <div class="form-field full-row"><label>Font stack</label><select name="fontPreset" data-theme-font-preset>
+          <option value="">System default</option>
+          <option value="Inter, ui-sans-serif, system-ui, sans-serif">Inter</option>
+          <option value="Georgia, Cambria, &quot;Times New Roman&quot;, serif">Georgia, serif</option>
+          <option value="ui-monospace, SFMono-Regular, Menlo, monospace">Monospace</option>
+          <option value="custom">Custom...</option>
+        </select><input name="font" placeholder="Family names only, no url()" data-theme-font hidden><div class="panel-note">A Google Font works if the page already loads it. Only family names are accepted, never a url().</div></div>
+        <div class="form-field full-row"><label>Logo URL</label><input name="logoUrl" placeholder="https://..."><div class="panel-note">Replaces the wordmark in the empty state. Blank falls back to the brand name as text.</div></div>
+        <div class="form-field full-row"><label>Greeting</label><input name="greeting" placeholder="How can we help today?" maxlength="200"></div>
+        <div class="form-field full-row"><label>Starter questions</label><textarea name="suggestions" rows="5" placeholder="One per line, three to five of them"></textarea></div>
+        <div class="full-row theme-actions">
+          <button type="submit" class="btn-primary">Save theme</button>
+          <button type="button" class="btn-ghost" data-theme-reset>Reset to defaults</button>
+        </div>
+        <div class="notice error full-row" data-theme-error hidden></div>
+        <div class="notice full-row" data-theme-success hidden>Theme saved. The widget picks it up on its next load, no redeploy needed.</div>
+      </form>
+
+      <!-- The real widget markup and the real stylesheet, against unsaved
+           values. A mock would drift from the widget the moment either
+           changed; this cannot, because it is the same CSS file. -->
+      <aside class="theme-preview">
+        <div class="admin-toolbar"><strong>Preview</strong></div>
+        <div class="theme-preview-frame" data-theme-preview></div>
+        <div class="panel-note">Live, against unsaved values. Mobile width, which is where the widget spends most of its life.</div>
+      </aside>
+    </div>
   </div>
 
   <div class="admin-panel" data-panel="offers">

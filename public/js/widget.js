@@ -11,6 +11,50 @@
    * their own site without a rebuild. */
   const POWERED_BY_URL = (script && script.getAttribute('data-powered-by')) || window.VELOUR_POWERED_BY_URL || 'https://rizeandshine.in';
   const STYLE_ID = 'velour-widget-style';
+
+  /* Layer 4 of the theme resolution order, and the only one the server cannot
+   * see: attributes on this script tag. Read once, here, because
+   * document.currentScript is only meaningful while the script is executing.
+   *
+   * Names mirror the SAHAAY_* environment variables, so a value can be moved
+   * between an env var, the dashboard and the embed tag without renaming it:
+   *   <script src="widget.js" data-accent="#0E7C66" data-density="compact">
+   */
+  const SCRIPT_THEME = (() => {
+    if (!script) return {};
+    const attr = (name) => {
+      const value = script.getAttribute(`data-${name}`);
+      return value && value.trim() ? value.trim() : null;
+    };
+    return {
+      accent: attr('accent'),
+      accentInk: attr('accent-ink'),
+      bg: attr('bg'),
+      tintFrom: attr('tint-from'),
+      tintTo: attr('tint-to'),
+      ink: attr('ink'),
+      radiusShell: attr('radius-shell'),
+      radiusCard: attr('radius-card'),
+      font: attr('font'),
+      headerStyle: attr('header-style'),
+      density: attr('density'),
+      logoUrl: attr('logo-url'),
+      greeting: attr('greeting'),
+    };
+  })();
+
+  /* The same validation lib/theme.js applies server side. Repeated rather than
+   * shared because these values become CSS custom properties in this document,
+   * and the layer they come from (a script tag on someone else's page) is the
+   * one the server never got to check. */
+  const HEX = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
+  const okColor = (v) => (typeof v === 'string' && HEX.test(v.trim()) ? v.trim() : null);
+  const okPx = (v, max) => {
+    const n = Math.round(Number(v));
+    return Number.isFinite(n) && n >= 0 && n <= max ? n : null;
+  };
+  const okFont = (v) => (typeof v === 'string' && !/url\s*\(|@import|[;{}]/i.test(v) && /^[\w\s,'"().-]{1,200}$/.test(v.trim()) ? v.trim() : null);
+  const okEnum = (v, allowed) => (typeof v === 'string' && allowed.indexOf(v.trim()) > -1 ? v.trim() : null);
   const state = {
     open: false,
     view: 'chat',
@@ -27,6 +71,7 @@
     activeOrder: null,
     cartSubmitting: false,
     productChoice: {},
+    theme: {},
     /* The verified customer's orders, read straight from the orders API. Not
      * a chat message and not a model output: the panel is the primary path for
      * anything about an order, and the chat input is for open questions. */
@@ -159,9 +204,69 @@
   }
 
   async function loadConfig() {
-    const data = await request('/api/config');
+    // The widget endpoint returns everything /api/config does, plus the theme,
+    // so this is one request rather than two.
+    const data = await request('/api/widget/config');
     state.config = data.brand ? { ...data.brand, brandName: data.brandName, brandTagline: data.brandTagline, welcomeMessage: data.welcomeMessage, suggestedQuestions: data.suggestedQuestions, shippingFreeThreshold: data.shippingFreeThreshold, shippingFlatFee: data.shippingFlatFee } : data;
+    // Layers 1 to 3, already resolved and validated server side.
+    state.theme = data.theme || {};
     applyTokens();
+    applyTheme();
+  }
+
+  /* Layer 4 over the server's answer, then onto the host element as custom
+   * properties. Set on shadow.host rather than inside the shadow root so the
+   * bubble, which lives outside the panel, inherits them too.
+   *
+   * Called before the first render, so the panel's first paint already has its
+   * colours. This is the same failure the storefront's brand-flash fix
+   * addressed: a value that lands after the first paint is a value the
+   * customer watches change. */
+  function applyTheme() {
+    if (!shadow) return;
+    const t = { ...(state.theme || {}) };
+
+    // Layer 4 wins where it is present and valid.
+    if (okColor(SCRIPT_THEME.accent)) t.accent = okColor(SCRIPT_THEME.accent);
+    if (okColor(SCRIPT_THEME.accentInk)) t.accentInk = okColor(SCRIPT_THEME.accentInk);
+    if (okColor(SCRIPT_THEME.bg)) t.bg = okColor(SCRIPT_THEME.bg);
+    if (okColor(SCRIPT_THEME.tintFrom)) t.tintFrom = okColor(SCRIPT_THEME.tintFrom);
+    if (okColor(SCRIPT_THEME.tintTo)) t.tintTo = okColor(SCRIPT_THEME.tintTo);
+    if (okColor(SCRIPT_THEME.ink)) t.ink = okColor(SCRIPT_THEME.ink);
+    if (okPx(SCRIPT_THEME.radiusShell, 64) !== null) t.radiusShell = okPx(SCRIPT_THEME.radiusShell, 64);
+    if (okPx(SCRIPT_THEME.radiusCard, 48) !== null) t.radiusCard = okPx(SCRIPT_THEME.radiusCard, 48);
+    if (okFont(SCRIPT_THEME.font)) t.font = okFont(SCRIPT_THEME.font);
+    if (okEnum(SCRIPT_THEME.headerStyle, ['floating', 'solid'])) t.headerStyle = SCRIPT_THEME.headerStyle;
+    if (okEnum(SCRIPT_THEME.density, ['comfortable', 'compact'])) t.density = SCRIPT_THEME.density;
+    if (SCRIPT_THEME.logoUrl && SAFE_URL(SCRIPT_THEME.logoUrl)) t.logoUrl = SCRIPT_THEME.logoUrl;
+    if (SCRIPT_THEME.greeting) t.greeting = String(SCRIPT_THEME.greeting).slice(0, 200);
+
+    state.theme = t;
+    injectThemeStyle();
+    const host = shadow.host;
+    const set = (name, value) => { if (value != null && value !== '') host.style.setProperty(name, value); };
+
+    set('--sah-accent', t.accent);
+    set('--sah-accent-ink', t.accentInk);
+    set('--sah-bg', t.bg);
+    set('--sah-bg-tint-from', t.tintFrom);
+    set('--sah-bg-tint-to', t.tintTo);
+    set('--sah-ink', t.ink);
+    set('--sah-font', t.font);
+    if (t.radiusShell != null) set('--sah-radius-shell', `${t.radiusShell}px`);
+    if (t.radiusCard != null) set('--sah-radius-card', `${t.radiusCard}px`);
+    // Derived from the tokens above rather than stored separately, so one
+    // accent restyles the widget and there is no second palette to keep up.
+    if (t.accent) set('--sah-accent-soft', `color-mix(in srgb, ${t.accent} 8%, transparent)`);
+    if (t.ink && t.bg) {
+      set('--sah-ink-muted', `color-mix(in srgb, ${t.ink} 58%, ${t.bg})`);
+      set('--sah-ink-faint', `color-mix(in srgb, ${t.ink} 32%, ${t.bg})`);
+      set('--sah-line', `color-mix(in srgb, ${t.ink} 10%, ${t.bg})`);
+    }
+    // Structural choices ride as attributes so CSS can branch on them without
+    // a second class list to keep in sync.
+    host.setAttribute('data-sah-header', t.headerStyle || 'floating');
+    host.setAttribute('data-sah-density', t.density || 'comfortable');
   }
 
   function applyTokens() {
@@ -183,13 +288,79 @@
     root.style.setProperty('--vw-position-left', b.widgetPosition === 'bottom-left' ? '20px' : 'auto');
   }
 
+  /* No unstyled frame.
+   *
+   * The layout comes from an external stylesheet, which loads asynchronously,
+   * so markup appended before it arrives would paint once with no styles and
+   * again with them. Two things prevent that:
+   *
+   *   1. The resolved theme is written into an inline <style> synchronously,
+   *      so the custom properties exist from the very first paint rather than
+   *      arriving with the sheet.
+   *   2. The root stays hidden until the sheet has actually loaded. visibility
+   *      rather than display, so the panel's size is already settled and
+   *      nothing reflows when it appears. A failed sheet still reveals, on the
+   *      load-or-error handler, because a permanently invisible widget is a
+   *      worse outcome than an ugly one.
+   */
   function injectStylesheet() {
     if (shadow.querySelector('link[data-widget-style]')) return;
+
+    const gate = document.createElement('style');
+    gate.dataset.widgetGate = 'true';
+    gate.textContent = '.vw-root{visibility:hidden}';
+    shadow.appendChild(gate);
+
     const link = document.createElement('link');
     link.rel = 'stylesheet';
     link.dataset.widgetStyle = 'true';
     link.href = new URL('/css/widget.css', script && script.src ? script.src : window.location.href).href;
+    const reveal = () => { gate.textContent = ''; };
+    link.addEventListener('load', reveal, { once: true });
+    link.addEventListener('error', reveal, { once: true });
+    // A sheet already in the browser cache can finish before the listener is
+    // attached, which would leave the widget hidden forever.
+    setTimeout(reveal, 2000);
     shadow.appendChild(link);
+  }
+
+  /* The resolved theme as a real stylesheet inside the shadow root.
+   *
+   * applyTheme() sets the same properties on the host element, which is what
+   * makes them inherit to the bubble outside the panel. This inline copy is
+   * what makes them present in the very first paint, before the external sheet
+   * has loaded, so the widget never renders in the default palette first. */
+  function injectThemeStyle() {
+    if (!shadow) return;
+    const t = state.theme || {};
+    const declarations = [
+      t.accent ? `--sah-accent:${t.accent}` : '',
+      t.accentInk ? `--sah-accent-ink:${t.accentInk}` : '',
+      t.accent ? `--sah-accent-soft:color-mix(in srgb, ${t.accent} 8%, transparent)` : '',
+      t.bg ? `--sah-bg:${t.bg}` : '',
+      t.tintFrom ? `--sah-bg-tint-from:${t.tintFrom}` : '',
+      t.tintTo ? `--sah-bg-tint-to:${t.tintTo}` : '',
+      t.ink ? `--sah-ink:${t.ink}` : '',
+      t.ink && t.bg ? `--sah-ink-muted:color-mix(in srgb, ${t.ink} 58%, ${t.bg})` : '',
+      t.ink && t.bg ? `--sah-ink-faint:color-mix(in srgb, ${t.ink} 32%, ${t.bg})` : '',
+      t.ink && t.bg ? `--sah-line:color-mix(in srgb, ${t.ink} 10%, ${t.bg})` : '',
+      t.radiusShell != null ? `--sah-radius-shell:${t.radiusShell}px` : '',
+      t.radiusCard != null ? `--sah-radius-card:${t.radiusCard}px` : '',
+      t.font ? `--sah-font:${t.font}` : '',
+    ].filter(Boolean).join(';');
+    if (!declarations) return;
+
+    let el = shadow.querySelector('style[data-widget-theme]');
+    if (!el) {
+      el = document.createElement('style');
+      el.dataset.widgetTheme = 'true';
+      // Ahead of the external sheet so the sheet's own :host defaults do not
+      // win on specificity, and present before anything paints.
+      shadow.insertBefore(el, shadow.firstChild);
+    }
+    // Every value here came through the validators above or the server's, so
+    // none of them can carry a semicolon out of its declaration.
+    el.textContent = `:host{${declarations}}`;
   }
 
   function icon(name) {

@@ -27,6 +27,7 @@ const {
   offerUpsertSchema,
 } = require('../schemas');
 const { env } = require('../config/env');
+const theme = require('../lib/theme');
 
 const router = express.Router();
 
@@ -684,6 +685,121 @@ router.post('/pending-actions/:id/reject', requireAdmin, validateBody(pendingAct
     );
     if (!result.rows.length) return res.status(409).json({ error: 'Request not found or already reviewed.' });
     res.json({ ok: true, displayId: result.rows[0].displayId });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/* ----------------------------- widget theme ----------------------------- */
+
+/* Layer 3 of the theme resolution order. Every field is optional and a blank
+ * one is stored as NULL, which means "no opinion" and lets the environment
+ * variable or the built-in default underneath it show through again. That is
+ * what makes Reset to defaults a real reset rather than a second set of
+ * hardcoded values.
+ *
+ * Validated with the same functions lib/theme.js uses when reading, so a value
+ * cannot be stored that the resolver would later refuse. These end up as CSS
+ * custom property values, so a rejected field is dropped rather than repaired.
+ */
+router.get('/theme', requireAdmin, async (req, res, next) => {
+  try {
+    const row = await db.query(
+      `SELECT accent, accent_ink AS "accentInk", bg, tint_from AS "tintFrom", tint_to AS "tintTo",
+              ink, radius_shell AS "radiusShell", radius_card AS "radiusCard", font,
+              header_style AS "headerStyle", density, logo_url AS "logoUrl",
+              greeting, suggestions, updated_at AS "updatedAt"
+         FROM widget_theme WHERE id = 1`
+    );
+    res.json({
+      // What is stored, which may be mostly nulls.
+      saved: row.rows[0] || {},
+      // What the widget will actually render with, once env and the defaults
+      // are layered in. The preview pane needs this, not the nulls.
+      resolved: await theme.resolveTheme(),
+      defaults: theme.DEFAULTS,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.put('/theme', requireAdmin, requireOperator, async (req, res, next) => {
+  try {
+    const body = req.body || {};
+    // An empty string is an explicit "clear this", which is not the same as a
+    // field the form did not send at all. Both become NULL here; the
+    // difference only matters to a partial update, which this is not.
+    const blank = (value) => value === '' || value === null || value === undefined;
+
+    const fields = {
+      accent: blank(body.accent) ? null : theme.cleanColor(body.accent),
+      accent_ink: blank(body.accentInk) ? null : theme.cleanColor(body.accentInk),
+      bg: blank(body.bg) ? null : theme.cleanColor(body.bg),
+      tint_from: blank(body.tintFrom) ? null : theme.cleanColor(body.tintFrom),
+      tint_to: blank(body.tintTo) ? null : theme.cleanColor(body.tintTo),
+      ink: blank(body.ink) ? null : theme.cleanColor(body.ink),
+      radius_shell: blank(body.radiusShell) ? null : theme.cleanRadius(body.radiusShell, 64),
+      radius_card: blank(body.radiusCard) ? null : theme.cleanRadius(body.radiusCard, 48),
+      font: blank(body.font) ? null : theme.cleanFont(body.font),
+      header_style: blank(body.headerStyle) ? null : theme.cleanEnum(body.headerStyle, ['floating', 'solid']),
+      density: blank(body.density) ? null : theme.cleanEnum(body.density, ['comfortable', 'compact']),
+      logo_url: blank(body.logoUrl) ? null : theme.cleanUrl(body.logoUrl),
+      greeting: blank(body.greeting) ? null : theme.cleanText(body.greeting, 200),
+      suggestions: blank(body.suggestions) ? null : theme.cleanSuggestions(body.suggestions),
+    };
+
+    // A value that was sent but did not survive validation is reported, not
+    // silently dropped. Saving a theme and finding one field quietly missing
+    // is worse than being told the hex was malformed.
+    const rejected = Object.keys(fields).filter((column) => {
+      const sent = {
+        accent: body.accent, accent_ink: body.accentInk, bg: body.bg,
+        tint_from: body.tintFrom, tint_to: body.tintTo, ink: body.ink,
+        radius_shell: body.radiusShell, radius_card: body.radiusCard,
+        font: body.font, header_style: body.headerStyle, density: body.density,
+        logo_url: body.logoUrl, greeting: body.greeting, suggestions: body.suggestions,
+      }[column];
+      return !blank(sent) && fields[column] === null;
+    });
+    if (rejected.length) {
+      return res.status(400).json({
+        error: `These values were not accepted: ${rejected.join(', ')}. Colours must be hex, radii are pixels, and suggestions must be 3 to 5 questions.`,
+      });
+    }
+
+    await db.query(
+      `UPDATE widget_theme SET
+         accent = $1, accent_ink = $2, bg = $3, tint_from = $4, tint_to = $5, ink = $6,
+         radius_shell = $7, radius_card = $8, font = $9, header_style = $10, density = $11,
+         logo_url = $12, greeting = $13, suggestions = $14, updated_at = now()
+       WHERE id = 1`,
+      [
+        fields.accent, fields.accent_ink, fields.bg, fields.tint_from, fields.tint_to, fields.ink,
+        fields.radius_shell, fields.radius_card, fields.font, fields.header_style, fields.density,
+        fields.logo_url, fields.greeting, fields.suggestions ? JSON.stringify(fields.suggestions) : null,
+      ]
+    );
+
+    // The widget reads the theme on every load, so this takes effect on the
+    // next page view with no redeploy.
+    res.json({ ok: true, resolved: await theme.resolveTheme() });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/* Clears every column back to NULL, which hands control back to the
+ * environment variables and then the built-in defaults. */
+router.post('/theme/reset', requireAdmin, requireOperator, async (req, res, next) => {
+  try {
+    await db.query(
+      `UPDATE widget_theme SET accent = NULL, accent_ink = NULL, bg = NULL, tint_from = NULL,
+         tint_to = NULL, ink = NULL, radius_shell = NULL, radius_card = NULL, font = NULL,
+         header_style = NULL, density = NULL, logo_url = NULL, greeting = NULL,
+         suggestions = NULL, updated_at = now() WHERE id = 1`
+    );
+    res.json({ ok: true, resolved: await theme.resolveTheme() });
   } catch (err) {
     next(err);
   }

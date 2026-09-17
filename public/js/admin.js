@@ -49,6 +49,7 @@
     loadKb();
     loadWidgetSettings();
     loadBrandConfig();
+    loadTheme();
     loadOffers();
     loadRequests();
     loadBundles();
@@ -85,6 +86,8 @@
     await adminFetch('/logout', { method: 'POST' });
     showLogin();
   });
+
+  bindTheme();
 
   document.querySelectorAll('.admin-tab').forEach((tab) => {
     tab.addEventListener('click', () => {
@@ -462,6 +465,211 @@
       } catch (err) {
         errEl.hidden = false;
         errEl.textContent = err.message || 'Could not save branding';
+      }
+    });
+  }
+
+  /* -------------------------- widget theme -------------------------- */
+
+  /* Layer 3 of the theme resolution order. A blank field is stored as NULL,
+   * which hands that token back to the environment variable underneath it and
+   * then to the built-in default, so clearing one colour does not drag a whole
+   * palette of hardcoded values along with it. */
+  const THEME_COLOURS = ['accent', 'accentInk', 'bg', 'ink', 'tintFrom', 'tintTo'];
+  let themeDefaults = {};
+  // An <input type="color"> has no empty state, so "not set" is tracked here.
+  let themeCleared = {};
+
+  function themeForm() { return document.querySelector('[data-theme-form]'); }
+
+  async function loadTheme() {
+    const form = themeForm();
+    if (!form) return;
+    const data = await adminFetch('/theme');
+    themeDefaults = data.defaults || {};
+    const saved = data.saved || {};
+    const resolved = data.resolved || {};
+
+    THEME_COLOURS.forEach((key) => {
+      const input = form.querySelector('[name="' + key + '"]');
+      if (!input) return;
+      // The picker shows what the widget actually renders, which is the
+      // resolved value; cleared records whether that came from here or below.
+      input.value = resolved[key] || themeDefaults[key] || '#000000';
+      themeCleared[key] = !saved[key];
+      markCleared(key);
+    });
+
+    form.querySelector('[name="radiusShell"]').value = saved.radiusShell == null ? '' : saved.radiusShell;
+    form.querySelector('[name="radiusCard"]').value = saved.radiusCard == null ? '' : saved.radiusCard;
+    form.querySelector('[name="headerStyle"]').value = saved.headerStyle || '';
+    form.querySelector('[name="density"]').value = saved.density || '';
+    form.querySelector('[name="logoUrl"]').value = saved.logoUrl || '';
+    form.querySelector('[name="greeting"]').value = saved.greeting || '';
+    form.querySelector('[name="suggestions"]').value = (saved.suggestions || []).join('\n');
+
+    const fontInput = form.querySelector('[data-theme-font]');
+    const fontPreset = form.querySelector('[data-theme-font-preset]');
+    fontInput.value = saved.font || '';
+    const match = Array.from(fontPreset.options).find((o) => o.value === (saved.font || ''));
+    fontPreset.value = saved.font ? (match ? match.value : 'custom') : '';
+    fontInput.hidden = fontPreset.value !== 'custom';
+
+    renderThemePreview();
+  }
+
+  function markCleared(key) {
+    const input = themeForm().querySelector('[name="' + key + '"]');
+    const wrap = input && input.closest('.colour-field');
+    if (wrap) wrap.classList.toggle('is-inherited', Boolean(themeCleared[key]));
+  }
+
+  /* What the form currently says, in the shape PUT /theme expects. */
+  function themeFormValues() {
+    const form = themeForm();
+    const values = {};
+    THEME_COLOURS.forEach((key) => {
+      values[key] = themeCleared[key] ? '' : form.querySelector('[name="' + key + '"]').value;
+    });
+    values.radiusShell = form.querySelector('[name="radiusShell"]').value.trim();
+    values.radiusCard = form.querySelector('[name="radiusCard"]').value.trim();
+    values.headerStyle = form.querySelector('[name="headerStyle"]').value;
+    values.density = form.querySelector('[name="density"]').value;
+    values.logoUrl = form.querySelector('[name="logoUrl"]').value.trim();
+    values.greeting = form.querySelector('[name="greeting"]').value.trim();
+
+    const preset = form.querySelector('[data-theme-font-preset]').value;
+    values.font = preset === 'custom' ? form.querySelector('[data-theme-font]').value.trim() : preset;
+
+    const lines = form.querySelector('[name="suggestions"]').value
+      .split('\n').map((line) => line.trim()).filter(Boolean);
+    values.suggestions = lines.length ? lines : '';
+    return values;
+  }
+
+  /* The resolution order run in the browser, so the preview shows unsaved
+   * values. The preview cannot see the environment layer, so a blank field
+   * shows the built-in default in its place. */
+  function previewTheme() {
+    const values = themeFormValues();
+    const t = Object.assign({}, themeDefaults);
+    Object.keys(values).forEach((key) => {
+      if (values[key] !== '' && values[key] != null) t[key] = values[key];
+    });
+    return t;
+  }
+
+  /* The real widget stylesheet against real widget markup. A hand-built mock
+   * would drift from the widget the first time either changed; this cannot,
+   * because it loads css/widget.css itself. */
+  function renderThemePreview() {
+    const host = document.querySelector('[data-theme-preview]');
+    if (!host) return;
+    const t = previewTheme();
+    const shadow = host.shadowRoot || host.attachShadow({ mode: 'open' });
+
+    const vars = [
+      '--sah-accent:' + t.accent,
+      '--sah-accent-ink:' + t.accentInk,
+      '--sah-accent-soft:color-mix(in srgb, ' + t.accent + ' 8%, transparent)',
+      '--sah-bg:' + t.bg,
+      '--sah-bg-tint-from:' + t.tintFrom,
+      '--sah-bg-tint-to:' + t.tintTo,
+      '--sah-ink:' + t.ink,
+      '--sah-ink-muted:color-mix(in srgb, ' + t.ink + ' 58%, ' + t.bg + ')',
+      '--sah-ink-faint:color-mix(in srgb, ' + t.ink + ' 32%, ' + t.bg + ')',
+      '--sah-line:color-mix(in srgb, ' + t.ink + ' 10%, ' + t.bg + ')',
+      '--sah-radius-shell:' + t.radiusShell + 'px',
+      '--sah-radius-card:' + t.radiusCard + 'px',
+      '--sah-font:' + t.font,
+    ].join(';');
+
+    const suggestions = Array.isArray(t.suggestions) && t.suggestions.length
+      ? t.suggestions
+      : ['Do you have this in my size?', 'Where is my order?', 'What is the return window?'];
+    const logo = /^https?:\/\//i.test(t.logoUrl || '')
+      ? '<img class="vw-empty-logo" src="' + escapeHtml(t.logoUrl) + '" alt="">'
+      : '<div class="vw-empty-word">' + escapeHtml((window.VELOUR_BRAND && window.VELOUR_BRAND.name) || 'Your Store') + '</div>';
+
+    shadow.innerHTML =
+      '<link rel="stylesheet" href="/css/widget.css">' +
+      '<style>:host{' + vars + ';display:block}.vw-root{position:static}.vw-panel{position:static;display:flex;width:100%;height:520px;max-width:360px;margin:0 auto}</style>' +
+      '<div class="vw-root" data-sah-header="' + escapeHtml(t.headerStyle) + '" data-sah-density="' + escapeHtml(t.density) + '">' +
+        '<div class="vw-panel">' +
+          '<header class="vw-header">' +
+            '<button type="button" class="vw-pill" aria-label="Cart">Cart</button>' +
+            '<button type="button" class="vw-pill">Track orders</button>' +
+            '<button type="button" class="vw-pill" aria-label="Close">&times;</button>' +
+          '</header>' +
+          '<main class="vw-body">' +
+            '<section class="vw-empty-state">' + logo +
+              '<div class="vw-empty-greeting">' + escapeHtml(t.greeting || 'How can we help today?') + '</div>' +
+              '<div class="vw-faqs">' + suggestions.map((q) => '<button type="button" class="vw-faq">' + escapeHtml(q) + '</button>').join('') + '</div>' +
+            '</section>' +
+            '<div class="vw-msg user">Do you have the kurta in medium?</div>' +
+            '<div class="vw-msg bot">Yes, medium is in stock in indigo.</div>' +
+            '<div class="vw-actions"><button type="button" class="vw-btn">Track</button><button type="button" class="vw-btn secondary">Report an issue</button></div>' +
+          '</main>' +
+          '<form class="vw-input"><div class="vw-input-main"><input placeholder="Ask anything" readonly></div></form>' +
+        '</div>' +
+      '</div>';
+  }
+
+  function bindTheme() {
+    const form = themeForm();
+    if (!form) return;
+
+    form.addEventListener('input', renderThemePreview);
+    form.addEventListener('change', renderThemePreview);
+
+    // A colour picker cannot be empty, so setting one is what marks it as an
+    // opinion and Clear is what takes that opinion back.
+    form.querySelectorAll('[data-theme-colour]').forEach((input) => {
+      input.addEventListener('input', () => {
+        themeCleared[input.name] = false;
+        markCleared(input.name);
+        renderThemePreview();
+      });
+    });
+    form.querySelectorAll('[data-theme-clear]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const key = button.getAttribute('data-theme-clear');
+        themeCleared[key] = true;
+        form.querySelector('[name="' + key + '"]').value = themeDefaults[key] || '#000000';
+        markCleared(key);
+        renderThemePreview();
+      });
+    });
+
+    form.querySelector('[data-theme-font-preset]').addEventListener('change', (event) => {
+      form.querySelector('[data-theme-font]').hidden = event.target.value !== 'custom';
+      renderThemePreview();
+    });
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const error = form.querySelector('[data-theme-error]');
+      const success = form.querySelector('[data-theme-success]');
+      error.hidden = true; success.hidden = true;
+      try {
+        await adminFetch('/theme', { method: 'PUT', body: JSON.stringify(themeFormValues()) });
+        success.hidden = false;
+        await loadTheme();
+      } catch (err) {
+        error.textContent = err.message || 'That theme could not be saved.';
+        error.hidden = false;
+      }
+    });
+
+    form.querySelector('[data-theme-reset]').addEventListener('click', async () => {
+      if (!window.confirm('Clear every saved theme value and fall back to this deployment default?')) return;
+      const error = form.querySelector('[data-theme-error]');
+      try {
+        await adminFetch('/theme/reset', { method: 'POST', body: JSON.stringify({}) });
+        await loadTheme();
+      } catch (err) {
+        error.textContent = err.message || 'Could not reset the theme.';
+        error.hidden = false;
       }
     });
   }

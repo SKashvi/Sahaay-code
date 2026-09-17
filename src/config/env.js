@@ -67,6 +67,36 @@ const env = {
   BRAND_SHOW_CART: process.env.BRAND_SHOW_CART !== 'false',
   BRAND_SHOW_TRACK_ORDERS: process.env.BRAND_SHOW_TRACK_ORDERS !== 'false',
 
+  /* Widget theme, layer 2 of the resolution order.
+   *
+   * Layer 1 is the hardcoded default in each of these lines and in the :root
+   * block of css/widget.css; layer 3 is the widget_theme row an admin edits;
+   * layer 4 is a data-* attribute on the embed script tag. Later wins, and
+   * every one of them is optional, so a deployment that sets none of these
+   * still renders a complete theme.
+   *
+   * Kept out of BRAND_* deliberately: those names are the storefront's
+   * palette and the widget's old contract, and are still read by css/main.css
+   * and brand.js. These are the widget's own token set, which is why they can
+   * be changed without touching the storefront.
+   */
+  SAHAAY_ACCENT: process.env.SAHAAY_ACCENT || '',
+  SAHAAY_ACCENT_INK: process.env.SAHAAY_ACCENT_INK || '',
+  SAHAAY_BG: process.env.SAHAAY_BG || '',
+  SAHAAY_TINT_FROM: process.env.SAHAAY_TINT_FROM || '',
+  SAHAAY_TINT_TO: process.env.SAHAAY_TINT_TO || '',
+  SAHAAY_INK: process.env.SAHAAY_INK || '',
+  SAHAAY_RADIUS_SHELL: process.env.SAHAAY_RADIUS_SHELL || '',
+  SAHAAY_RADIUS_CARD: process.env.SAHAAY_RADIUS_CARD || '',
+  SAHAAY_FONT: process.env.SAHAAY_FONT || '',
+  SAHAAY_HEADER_STYLE: process.env.SAHAAY_HEADER_STYLE || '',
+  SAHAAY_DENSITY: process.env.SAHAAY_DENSITY || '',
+  SAHAAY_LOGO_URL: process.env.SAHAAY_LOGO_URL || '',
+  SAHAAY_GREETING: process.env.SAHAAY_GREETING || '',
+  // A JSON array of 3 to 5 strings. Parsed and validated in lib/theme.js, so
+  // a malformed value degrades to the default rather than crashing boot.
+  SAHAAY_SUGGESTIONS: process.env.SAHAAY_SUGGESTIONS || '',
+
   SHIPPING_FREE_THRESHOLD: Number(process.env.SHIPPING_FREE_THRESHOLD) || 199900,
   SHIPPING_FLAT_FEE: Number(process.env.SHIPPING_FLAT_FEE) || 9900,
 
