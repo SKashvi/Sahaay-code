@@ -143,6 +143,42 @@ const definitions = [
 /* Executors                                                           */
 /* ------------------------------------------------------------------ */
 
+/* One shape for every product a tool puts in a products block.
+ *
+ * src/routes/orders.js resolves a line to a variant with the composite key
+ * productId::size::color, and rejects the checkout when no variant matches.
+ * A block that omits sizesInStock or colorsInStock therefore produces a cart
+ * line that cannot be bought, so both search_catalog and suggest_add_ons map
+ * their rows through here rather than each assembling their own object.
+ *
+ * Sizes and colours are aggregated independently, so a card can list a size
+ * and a colour whose specific pairing is sold out. Checkout is the authority
+ * on that and rejects the line by name, which is the same position the
+ * storefront product page is in.
+ */
+function toProductCard(row) {
+  return {
+    id: row.id,
+    name: row.name,
+    slug: row.slug,
+    price: paiseToRupeeString(row.price),
+    pricePaise: row.price,
+    fabric: row.fabric || undefined,
+    imageUrl: row.imageUrl || undefined,
+    inStock: Number(row.available) > 0,
+    sizesInStock: row.sizesInStock || [],
+    colorsInStock: row.colorsInStock || [],
+  };
+}
+
+/* The same card minus the two fields only the browser needs. Keeping them out
+ * of the tool result saves tokens and stops the model quoting a raw paise
+ * integer at a customer. */
+function toProductResult(card) {
+  const { imageUrl, pricePaise, ...rest } = card;
+  return rest;
+}
+
 function clampLimit(value, fallback, max) {
   const n = Number(value);
   if (!Number.isFinite(n)) return fallback;
@@ -164,7 +200,10 @@ async function searchCatalog(args) {
             COALESCE(SUM(GREATEST(v.stock_quantity - v.reserved_quantity, 0)), 0)::int AS available,
             COALESCE(array_agg(DISTINCT v.size) FILTER (
               WHERE v.active AND (v.stock_quantity - v.reserved_quantity) > 0
-            ), '{}') AS "sizesInStock"
+            ), '{}') AS "sizesInStock",
+            COALESCE(array_agg(DISTINCT v.color) FILTER (
+              WHERE v.active AND (v.stock_quantity - v.reserved_quantity) > 0
+            ), '{}') AS "colorsInStock"
        FROM products p
        LEFT JOIN product_variants v ON v.product_id = p.id AND v.active = true
       WHERE p.active = true
@@ -177,20 +216,10 @@ async function searchCatalog(args) {
     [query, maxPricePaise, size, limit]
   );
 
-  const products = result.rows.map((row) => ({
-    id: row.id,
-    name: row.name,
-    slug: row.slug,
-    price: paiseToRupeeString(row.price),
-    pricePaise: row.price,
-    fabric: row.fabric || undefined,
-    imageUrl: row.imageUrl || undefined,
-    inStock: row.available > 0,
-    sizesInStock: row.sizesInStock || [],
-  }));
+  const products = result.rows.map(toProductCard);
 
   return {
-    result: { count: products.length, products: products.map(({ imageUrl, pricePaise, ...rest }) => rest) },
+    result: { count: products.length, products: products.map(toProductResult) },
     blocks: products.length ? [{ type: 'products', items: products }] : [],
   };
 }
@@ -254,8 +283,14 @@ async function suggestAddOns(args) {
   // the agent does not present a guess as a considered recommendation.
   const bundled = await db.query(
     `SELECT b.title AS "bundleTitle", b.description AS "bundleDescription",
-            p.id, p.name, p.price, p.image_url AS "imageUrl",
-            COALESCE(SUM(GREATEST(v.stock_quantity - v.reserved_quantity, 0)), 0)::int AS available
+            p.id, p.name, p.slug, p.price, p.fabric, p.image_url AS "imageUrl",
+            COALESCE(SUM(GREATEST(v.stock_quantity - v.reserved_quantity, 0)), 0)::int AS available,
+            COALESCE(array_agg(DISTINCT v.size) FILTER (
+              WHERE v.active AND (v.stock_quantity - v.reserved_quantity) > 0
+            ), '{}') AS "sizesInStock",
+            COALESCE(array_agg(DISTINCT v.color) FILTER (
+              WHERE v.active AND (v.stock_quantity - v.reserved_quantity) > 0
+            ), '{}') AS "colorsInStock"
        FROM bundles b
        JOIN products p ON p.id = ANY(b.product_ids) AND p.id <> $1 AND p.active = true
        LEFT JOIN product_variants v ON v.product_id = p.id AND v.active = true
@@ -268,28 +303,28 @@ async function suggestAddOns(args) {
   );
 
   if (bundled.rows.length) {
-    const products = bundled.rows.map((row) => ({
-      id: row.id,
-      name: row.name,
-      price: paiseToRupeeString(row.price),
-      imageUrl: row.imageUrl || undefined,
-      inStock: true,
-    }));
+    const products = bundled.rows.map(toProductCard);
     return {
       result: {
         source: 'curated_bundle',
         bundleTitle: bundled.rows[0].bundleTitle,
         note: 'These are a bundle the store put together deliberately. It is fine to present them as a set.',
         count: products.length,
-        products: products.map(({ imageUrl, ...rest }) => rest),
+        products: products.map(toProductResult),
       },
       blocks: [{ type: 'products', items: products, heading: bundled.rows[0].bundleTitle }],
     };
   }
 
   const result = await db.query(
-    `SELECT p.id, p.name, p.price, p.image_url AS "imageUrl",
-            COALESCE(SUM(GREATEST(v.stock_quantity - v.reserved_quantity, 0)), 0)::int AS available
+    `SELECT p.id, p.name, p.slug, p.price, p.fabric, p.image_url AS "imageUrl",
+            COALESCE(SUM(GREATEST(v.stock_quantity - v.reserved_quantity, 0)), 0)::int AS available,
+            COALESCE(array_agg(DISTINCT v.size) FILTER (
+              WHERE v.active AND (v.stock_quantity - v.reserved_quantity) > 0
+            ), '{}') AS "sizesInStock",
+            COALESCE(array_agg(DISTINCT v.color) FILTER (
+              WHERE v.active AND (v.stock_quantity - v.reserved_quantity) > 0
+            ), '{}') AS "colorsInStock"
        FROM products p
        LEFT JOIN product_variants v ON v.product_id = p.id AND v.active = true
       WHERE p.active = true AND p.id <> $1
@@ -299,19 +334,13 @@ async function suggestAddOns(args) {
       LIMIT 3`,
     [productId]
   );
-  const products = result.rows.map((row) => ({
-    id: row.id,
-    name: row.name,
-    price: paiseToRupeeString(row.price),
-    imageUrl: row.imageUrl || undefined,
-    inStock: true,
-  }));
+  const products = result.rows.map(toProductCard);
   return {
     result: {
       source: 'catalog_neighbours',
       note: 'No curated bundle covers this product, so these are simply other in-stock items. Present them as "you might also like", not as a matched set.',
       count: products.length,
-      products: products.map(({ imageUrl, ...rest }) => rest),
+      products: products.map(toProductResult),
     },
     blocks: products.length ? [{ type: 'products', items: products, heading: 'You might also like' }] : [],
   };

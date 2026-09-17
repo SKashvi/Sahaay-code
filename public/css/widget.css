@@ -1,3 +1,60 @@
+/* Design tokens.
+ *
+ * The widget renders inside a shadow root, and custom properties inherit
+ * across that boundary, so the --brand-* names brand.js writes onto the page
+ * :root are readable here. Each token therefore resolves in three steps:
+ *
+ *   1. --vw-* set inline on the host by applyTokens() in js/widget.js, from
+ *      the /api/config response. This wins, and is the only path available on
+ *      a third-party site where brand.js never runs.
+ *   2. the matching --brand-* from brand.js, for pages that load it.
+ *   3. a literal, so an embed with neither still renders legibly rather than
+ *      falling back to unstyled markup.
+ *
+ * brand.js is only read from, never changed: its contract is the --brand-*
+ * names it already writes.
+ */
+:host {
+  --vw-accent: var(--brand-accent, #6C5FFF);
+  --vw-secondary: var(--brand-secondary, #2A2350);
+  --vw-background: var(--brand-background, #F7F7FB);
+  --vw-surface: var(--brand-surface, #FFFFFF);
+  --vw-text: var(--brand-text, #17151F);
+  --vw-muted: var(--brand-muted, #6F6B7D);
+  --vw-font: var(--brand-font-family, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif);
+  --vw-radius: var(--brand-radius, 14px);
+
+  /* Derived from the four colours above, so one accent restyles the widget
+   * coherently and nothing here needs its own dashboard field. */
+  --vw-surface-raised: color-mix(in srgb, var(--vw-surface) 96%, var(--vw-text));
+  --vw-border: color-mix(in srgb, var(--vw-text) 11%, transparent);
+  --vw-text-muted: var(--vw-muted);
+  /* What sits on top of an accent fill. The surface colour, because that is
+   * what every accent-filled control in this file already used. */
+  --vw-accent-contrast: var(--vw-surface);
+
+  --vw-radius-sm: calc(var(--vw-radius) / 2);
+  --vw-radius-md: var(--vw-radius);
+  --vw-radius-lg: calc(var(--vw-radius) * 1.4);
+
+  --vw-shadow-sm: 0 1px 3px color-mix(in srgb, var(--vw-text) 10%, transparent);
+  --vw-shadow-md: 0 14px 34px color-mix(in srgb, var(--vw-text) 24%, transparent);
+  /* The panel's drop shadow is a good deal deeper than the md step, so it
+   * gets its own rung rather than being forced onto one that does not fit. */
+  --vw-shadow-lg: 0 24px 70px color-mix(in srgb, var(--vw-text) 24%, transparent);
+
+  --vw-space-1: 4px;
+  --vw-space-2: 8px;
+  --vw-space-3: 12px;
+  --vw-space-4: 16px;
+  --vw-space-5: 24px;
+
+  --vw-font-size-xs: 11px;
+  --vw-font-size-sm: 12px;
+  --vw-font-size-base: 13px;
+  --vw-font-size-lg: 17px;
+}
+
 :host {
   position: fixed;
   right: var(--vw-position-right);
@@ -15,11 +72,11 @@ button, input, select, textarea { font: inherit; }
   border: 0;
   border-radius: 50%;
   background: var(--vw-accent);
-  color: var(--vw-surface);
+  color: var(--vw-accent-contrast);
   cursor: pointer;
   display: grid;
   place-items: center;
-  box-shadow: 0 14px 34px color-mix(in srgb, var(--vw-text) 24%, transparent);
+  box-shadow: var(--vw-shadow-md);
 }
 .vw-bubble svg { width: 25px; height: 25px; }
 .vw-panel {
@@ -31,20 +88,20 @@ button, input, select, textarea { font: inherit; }
   display: none;
   flex-direction: column;
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--vw-text) 12%, transparent);
-  border-radius: var(--vw-radius);
+  border: 1px solid var(--vw-border);
+  border-radius: var(--vw-radius-md);
   background: var(--vw-background);
   color: var(--vw-text);
-  box-shadow: 0 24px 70px color-mix(in srgb, var(--vw-text) 24%, transparent);
+  box-shadow: var(--vw-shadow-lg);
 }
 :host(.open) .vw-panel { display: flex; }
 .vw-header {
-  padding: 12px 14px;
+  padding: var(--vw-space-3) var(--vw-space-4);
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--vw-space-2);
   background: var(--vw-secondary);
-  color: var(--vw-surface);
+  color: var(--vw-accent-contrast);
 }
 .vw-header-logo {
   height: var(--vw-logo-height);
@@ -60,18 +117,18 @@ button, input, select, textarea { font: inherit; }
   border: 1px solid color-mix(in srgb, var(--vw-surface) 25%, transparent);
   background: transparent;
   color: inherit;
-  border-radius: calc(var(--vw-radius) / 2);
-  padding: 9px 11px;
+  border-radius: var(--vw-radius-sm);
+  padding: var(--vw-space-2) var(--vw-space-3);
   cursor: pointer;
 }
 .vw-header-btn svg { width: 17px; height: 17px; vertical-align: middle; }
 .vw-body {
   flex: 1;
   overflow: auto;
-  padding: 18px;
+  padding: var(--vw-space-4);
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--vw-space-3);
 }
 .vw-welcome { text-align: center; padding: 6px 4px 2px; }
 .vw-welcome-logo {
@@ -82,79 +139,203 @@ button, input, select, textarea { font: inherit; }
   display: block;
 }
 .vw-welcome-empty { height: var(--vw-logo-height); margin-bottom: 10px; }
-.vw-welcome-title { font-weight: 800; font-size: 17px; }
-.vw-welcome-copy { color: var(--vw-muted); font-size: 12px; margin-top: 5px; line-height: 1.5; }
-.vw-faqs { display: flex; flex-wrap: wrap; gap: 7px; }
+.vw-welcome-title { font-weight: 800; font-size: var(--vw-font-size-lg); }
+.vw-welcome-copy { color: var(--vw-text-muted); font-size: var(--vw-font-size-sm); margin-top: 5px; line-height: 1.5; }
+.vw-faqs { display: flex; flex-wrap: wrap; gap: var(--vw-space-2); }
 .vw-faq {
   border: 1px solid color-mix(in srgb, var(--vw-accent) 35%, transparent);
   background: var(--vw-surface);
   color: var(--vw-text);
   border-radius: 999px;
-  padding: 9px 11px;
+  padding: var(--vw-space-2) var(--vw-space-3);
   cursor: pointer;
-  font-size: 12px;
+  font-size: var(--vw-font-size-sm);
 }
 .vw-msg {
   max-width: 86%;
-  padding: 10px 12px;
-  border-radius: var(--vw-radius);
-  font-size: 13px;
+  padding: var(--vw-space-3);
+  border-radius: var(--vw-radius-md);
+  font-size: var(--vw-font-size-base);
   line-height: 1.5;
   white-space: pre-wrap;
 }
-.vw-msg.user { margin-left: auto; background: var(--vw-accent); color: var(--vw-surface); }
-.vw-msg.bot { background: var(--vw-surface); border: 1px solid color-mix(in srgb, var(--vw-text) 10%, transparent); }
+.vw-msg.user {
+  margin-left: auto;
+  background: var(--vw-accent);
+  color: var(--vw-accent-contrast);
+  border-bottom-right-radius: var(--vw-radius-sm);
+  font-weight: 500;
+}
+.vw-msg.bot {
+  margin-right: auto;
+  background: var(--vw-surface);
+  border: 1px solid var(--vw-border);
+  border-bottom-left-radius: var(--vw-radius-sm);
+  box-shadow: var(--vw-shadow-sm);
+}
+
+/* Three dots rather than the word "Typing...", so the wait reads as the
+ * assistant working instead of as a message it actually sent. */
+.vw-typing { display: inline-flex; align-items: center; gap: 5px; padding: var(--vw-space-1) 0; }
+.vw-typing span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--vw-text-muted);
+  animation: vw-blink 1.3s infinite ease-in-out both;
+}
+.vw-typing span:nth-child(2) { animation-delay: .18s; }
+.vw-typing span:nth-child(3) { animation-delay: .36s; }
+@keyframes vw-blink {
+  0%, 80%, 100% { opacity: .25; transform: translateY(0); }
+  40% { opacity: 1; transform: translateY(-2px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .vw-typing span { animation: none; opacity: .55; }
+}
+
+/* Quick replies under the first answer. Same chip as .vw-faq, kept as its own
+ * class so the welcome-screen set and the in-conversation set can diverge
+ * later without one dragging the other with it. */
+.vw-quick { margin-top: calc(var(--vw-space-1) * -1); }
 .vw-card {
   background: var(--vw-surface);
-  border: 1px solid color-mix(in srgb, var(--vw-text) 10%, transparent);
-  border-radius: var(--vw-radius);
-  padding: 12px;
+  border: 1px solid var(--vw-border);
+  border-radius: var(--vw-radius-md);
+  padding: var(--vw-space-3);
 }
-.vw-card-title { font-weight: 800; margin-bottom: 9px; }
-.vw-products { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
-.vw-product { overflow: hidden; background: var(--vw-surface); border: 1px solid color-mix(in srgb, var(--vw-text) 10%, transparent); border-radius: var(--vw-radius); }
-.vw-product img { display: block; width: 100%; aspect-ratio: 1 / 1; object-fit: cover; }
-.vw-product-copy { padding: 9px; }
-.vw-product-name { font-weight: 800; font-size: 12px; }
-.vw-product-price { font-weight: 800; color: var(--vw-accent); margin-top: 4px; }
-.vw-product-meta { font-size: 11px; color: var(--vw-muted); margin-top: 4px; }
-.vw-product-size { margin: 8px 0 0; gap: 4px; }
-.vw-product-size label { font-size: 10px; }
-.vw-product-size select { padding: 6px 7px; font-size: 11px; }
-.vw-product-add { width: 100%; margin-top: 8px; padding: 7px 9px; font-size: 11px; }
-.vw-product-added { font-size: 11px; font-weight: 700; color: var(--vw-accent); margin-top: 6px; }
-.vw-offers { display: flex; flex-wrap: wrap; gap: 8px; }
-.vw-offer { border: 1px solid color-mix(in srgb, var(--vw-accent) 36%, transparent); background: var(--vw-surface); border-radius: 999px; padding: 8px 10px; font-size: 11px; }
-.vw-order-item { display: flex; justify-content: space-between; gap: 12px; padding: 7px 0; border-bottom: 1px solid color-mix(in srgb, var(--vw-text) 8%, transparent); font-size: 12px; }
+.vw-card-title { font-weight: 800; margin-bottom: var(--vw-space-3); }
+/* Product cards.
+ *
+ * One block renders in one of three modes, picked by how many items it holds:
+ * a single hero, a two-up comparison, or a compact list. The mode class sits
+ * on the grid and on each card so the shared rules below can be overridden
+ * per mode without a second set of element classes.
+ */
+.vw-products { display: grid; gap: var(--vw-space-2); }
+.vw-products-hero { grid-template-columns: minmax(0, 1fr); }
+.vw-products-compare { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
+.vw-products-rows { grid-template-columns: minmax(0, 1fr); }
+
+.vw-product {
+  overflow: hidden;
+  background: var(--vw-surface);
+  border: 1px solid var(--vw-border);
+  border-radius: var(--vw-radius-md);
+  box-shadow: var(--vw-shadow-sm);
+}
+.vw-product img { display: block; width: 100%; object-fit: cover; background: var(--vw-surface-raised); }
+.vw-product-copy { padding: var(--vw-space-3); display: flex; flex-direction: column; gap: var(--vw-space-2); }
+/* Two lines, then an ellipsis, so a long name cannot push the price and the
+ * Add button out of alignment across a row of cards. */
+.vw-product-name {
+  font-weight: 800;
+  font-size: var(--vw-font-size-sm);
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.vw-product-price { font-weight: 800; color: var(--vw-accent); font-size: var(--vw-font-size-base); }
+.vw-product-meta { font-size: var(--vw-font-size-xs); color: var(--vw-text-muted); }
+
+/* Hero: one product, so it gets the room to be looked at properly. */
+.vw-product-hero img { aspect-ratio: 4 / 5; }
+.vw-product-hero .vw-product-copy { padding: var(--vw-space-4); gap: var(--vw-space-3); }
+.vw-product-hero .vw-product-name { font-size: var(--vw-font-size-lg); -webkit-line-clamp: 2; line-clamp: 2; }
+.vw-product-hero .vw-product-price { font-size: 22px; }
+
+/* Comparison: two side by side, one of them marked. */
+.vw-product-compare img { aspect-ratio: 4 / 5; }
+.vw-product-compare { display: flex; flex-direction: column; }
+.vw-product-compare .vw-product-copy { flex: 1; }
+.vw-product-recommended { border-color: var(--vw-accent); box-shadow: 0 0 0 1px var(--vw-accent), var(--vw-shadow-sm); }
+.vw-product-badge {
+  display: block;
+  background: var(--vw-accent);
+  color: var(--vw-accent-contrast);
+  font-size: var(--vw-font-size-xs);
+  font-weight: 800;
+  text-align: center;
+  padding: var(--vw-space-1) var(--vw-space-2);
+}
+
+/* Compact rows: thumbnail left, everything else right. */
+.vw-product-row { display: grid; grid-template-columns: 56px minmax(0, 1fr); gap: var(--vw-space-3); padding: var(--vw-space-2); align-items: center; }
+.vw-product-row img { width: 56px; height: 70px; aspect-ratio: auto; border-radius: var(--vw-radius-sm); }
+.vw-product-row .vw-product-copy { padding: 0; gap: var(--vw-space-1); }
+.vw-product-row .vw-product-add { width: auto; align-self: flex-start; padding: var(--vw-space-1) var(--vw-space-3); }
+
+/* Tappable chips instead of a select: one tap, no dropdown, and the whole
+ * set of choices stays visible while the customer decides. */
+.vw-chips { display: flex; flex-wrap: wrap; gap: var(--vw-space-1); }
+.vw-chips-label { font-size: var(--vw-font-size-xs); font-weight: 800; color: var(--vw-text-muted); }
+.vw-chip {
+  border: 1px solid var(--vw-border);
+  background: var(--vw-surface);
+  color: var(--vw-text);
+  border-radius: 999px;
+  padding: var(--vw-space-1) var(--vw-space-3);
+  font-size: var(--vw-font-size-xs);
+  line-height: 1.6;
+  cursor: pointer;
+  min-height: 30px;
+}
+.vw-chip:hover { border-color: var(--vw-accent); }
+.vw-chip.selected { border-color: var(--vw-accent); background: color-mix(in srgb, var(--vw-accent) 12%, var(--vw-surface)); font-weight: 800; }
+
+.vw-product-add { width: 100%; padding: var(--vw-space-2) var(--vw-space-3); font-size: var(--vw-font-size-xs); }
+.vw-product-add:disabled { opacity: .5; cursor: not-allowed; }
+.vw-product-add.added { background: color-mix(in srgb, var(--vw-accent) 80%, var(--vw-text)); }
+.vw-product-hint { font-size: var(--vw-font-size-xs); color: var(--vw-text-muted); }
+/* The hint element is always rendered so syncAddButton can write into it
+ * without rebuilding the card, and collapses when it has nothing to say. */
+.vw-product-hint:empty { display: none; }
+.vw-product-soldout { opacity: .62; }
+.vw-product-soldout img { filter: grayscale(1); }
+.vw-offers { display: flex; flex-wrap: wrap; gap: var(--vw-space-2); }
+.vw-offer { border: 1px solid color-mix(in srgb, var(--vw-accent) 36%, transparent); background: var(--vw-surface); border-radius: 999px; padding: var(--vw-space-2) var(--vw-space-3); font-size: var(--vw-font-size-xs); }
+.vw-order-item { display: flex; justify-content: space-between; gap: var(--vw-space-3); padding: var(--vw-space-2) 0; border-bottom: 1px solid var(--vw-border); font-size: var(--vw-font-size-sm); }
 .vw-order-item:last-child { border-bottom: 0; }
 .vw-status { font-weight: 800; color: var(--vw-accent); }
 .vw-link { color: var(--vw-accent); font-weight: 700; }
 .vw-order-tracking { margin-top: 9px; }
-.vw-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
-.vw-btn { border: 0; border-radius: calc(var(--vw-radius) / 2); background: var(--vw-accent); color: var(--vw-surface); padding: 10px 12px; cursor: pointer; font-weight: 800; }
+.vw-actions { display: flex; gap: var(--vw-space-2); flex-wrap: wrap; margin-top: var(--vw-space-3); }
+.vw-btn { border: 0; border-radius: var(--vw-radius-sm); background: var(--vw-accent); color: var(--vw-accent-contrast); padding: var(--vw-space-3); cursor: pointer; font-weight: 800; }
 .vw-btn.secondary { background: var(--vw-secondary); }
 .vw-code-field { margin-top: 10px; }
-.vw-field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 10px; }
-.vw-field label { font-size: 11px; font-weight: 800; color: var(--vw-muted); }
-.vw-field input, .vw-field select, .vw-field textarea, .vw-input input { border: 1px solid color-mix(in srgb, var(--vw-text) 14%, transparent); background: var(--vw-surface); color: var(--vw-text); border-radius: calc(var(--vw-radius) / 2); padding: 10px; outline: none; }
+.vw-field { display: flex; flex-direction: column; gap: var(--vw-space-1); margin-bottom: var(--vw-space-3); }
+.vw-field label { font-size: var(--vw-font-size-xs); font-weight: 800; color: var(--vw-text-muted); }
+.vw-field input, .vw-field select, .vw-field textarea, .vw-input input { border: 1px solid var(--vw-border); background: var(--vw-surface); color: var(--vw-text); border-radius: var(--vw-radius-sm); padding: var(--vw-space-3); outline: none; }
 .vw-code { letter-spacing: .35em; text-align: center; font-weight: 900; }
 .vw-proposal { border-left: 4px solid var(--vw-accent); }
-.vw-upload { border: 1px dashed color-mix(in srgb, var(--vw-accent) 55%, transparent); border-radius: var(--vw-radius); padding: 12px; background: var(--vw-surface); }
+.vw-upload { border: 1px dashed color-mix(in srgb, var(--vw-accent) 55%, transparent); border-radius: var(--vw-radius-md); padding: var(--vw-space-3); background: var(--vw-surface); }
 .vw-upload button { margin-top: 8px; }
-.vw-input { display: flex; gap: 8px; padding: 12px; background: var(--vw-surface); border-top: 1px solid color-mix(in srgb, var(--vw-text) 9%, transparent); }
+.vw-input { display: flex; gap: var(--vw-space-2); padding: var(--vw-space-3); background: var(--vw-surface); border-top: 1px solid var(--vw-border); }
 .vw-input-main { position: relative; display: flex; align-items: center; flex: 1; min-width: 0; }
 .vw-input input { width: 100%; padding-right: 42px; }
-.vw-attach { position: absolute; right: 6px; width: 31px; height: 31px; border: 0; background: transparent; color: var(--vw-muted); cursor: pointer; display: grid; place-items: center; border-radius: calc(var(--vw-radius) / 2); }
+.vw-attach { position: absolute; right: 6px; width: 31px; height: 31px; border: 0; background: transparent; color: var(--vw-text-muted); cursor: pointer; display: grid; place-items: center; border-radius: var(--vw-radius-sm); }
 .vw-attach svg { width: 17px; height: 17px; }
-.vw-send { width: 44px; border: 0; border-radius: calc(var(--vw-radius) / 2); background: var(--vw-accent); color: var(--vw-surface); cursor: pointer; font-size: 18px; }
+.vw-send { width: 44px; border: 0; border-radius: var(--vw-radius-sm); background: var(--vw-accent); color: var(--vw-accent-contrast); cursor: pointer; font-size: var(--vw-font-size-lg); }
 .vw-send:disabled { opacity: .55; cursor: not-allowed; }
-.vw-attachment { font-size: 11px; color: var(--vw-accent); padding: 4px 2px; }
-.vw-empty { color: var(--vw-muted); font-size: 12px; }
-.vw-cart-line { display: flex; align-items: center; gap: 9px; padding: 9px 0; border-bottom: 1px solid color-mix(in srgb, var(--vw-text) 8%, transparent); }
-.vw-cart-line img { width: 42px; height: 50px; object-fit: cover; border-radius: calc(var(--vw-radius) / 2); }
+.vw-attachment { font-size: var(--vw-font-size-xs); color: var(--vw-accent); padding: 4px 2px; }
+.vw-empty { color: var(--vw-text-muted); font-size: var(--vw-font-size-sm); }
+.vw-cart-line { display: flex; align-items: center; gap: var(--vw-space-3); padding: var(--vw-space-3) 0; border-bottom: 1px solid var(--vw-border); }
+.vw-cart-line img { width: 42px; height: 50px; object-fit: cover; border-radius: var(--vw-radius-sm); }
 .vw-cart-info { flex: 1; min-width: 0; }
-.vw-cart-name { font-weight: 800; font-size: 12px; }
-.vw-cart-meta { font-size: 11px; color: var(--vw-muted); margin-top: 3px; }
+.vw-cart-name { font-weight: 800; font-size: var(--vw-font-size-sm); }
+.vw-cart-meta { font-size: var(--vw-font-size-xs); color: var(--vw-text-muted); margin-top: 3px; }
+.vw-footer {
+  padding: var(--vw-space-1) var(--vw-space-3) var(--vw-space-2);
+  background: var(--vw-surface);
+  text-align: center;
+  font-size: 10px;
+  color: var(--vw-text-muted);
+}
+.vw-footer a { color: inherit; text-decoration: underline; }
+.vw-footer a:hover { color: var(--vw-accent); }
 @media (max-width: 640px) {
   :host { right: 14px; left: auto; bottom: 14px; }
   .vw-panel { right: 0; width: calc(100vw - 28px); height: min(720px, calc(100vh - 92px)); }

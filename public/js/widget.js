@@ -7,6 +7,9 @@
   const script = document.currentScript;
   const API_BASE = ((script && script.getAttribute('data-api')) || window.VELOUR_WIDGET_API || window.API_BASE || '').replace(/\/$/, '');
   const ROOT_ID = 'velour-widget-root';
+  /* The footer credit. Overridable per embed so a reseller can point it at
+   * their own site without a rebuild. */
+  const POWERED_BY_URL = (script && script.getAttribute('data-powered-by')) || window.VELOUR_POWERED_BY_URL || 'https://rizeandshine.in';
   const STYLE_ID = 'velour-widget-style';
   const state = {
     open: false,
@@ -23,8 +26,7 @@
     attachmentName: '',
     activeOrder: null,
     cartSubmitting: false,
-    sizePicker: {},
-    addedProductId: null,
+    productChoice: {},
   };
   let host = null;
   let shadow = null;
@@ -34,6 +36,11 @@
    * scratch on every chat render, and the index is only ever read between
    * that render and the next one. */
   const productRefs = [];
+  /* Per-card 'Added' timers, keyed by the same ref, so a second click
+   * restarts the confirmation instead of letting an older timer cut it
+   * short. */
+  const addedTimers = {};
+  let hasScrolled = false;
 
   const ESC = (value) => String(value == null ? '' : value).replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
   /* Only http and https URLs are ever written into an attribute. The API
@@ -154,6 +161,7 @@
         <div class="vw-input-main"><input data-chat-input maxlength="1000" autocomplete="off" placeholder="Ask anything" ${state.sending ? 'disabled' : ''}><button type="button" class="vw-attach" data-action="attach" aria-label="Attach a photo">${icon('clip')}</button><input type="file" hidden accept="image/jpeg,image/png,image/webp" data-file></div>
         <button class="vw-send" type="submit" ${state.sending ? 'disabled' : ''} aria-label="Send">↑</button>
       </form>
+      <div class="vw-footer">Powered by <a href="${ESC(SAFE_URL(POWERED_BY_URL))}" target="_blank" rel="noopener noreferrer">Sahaay</a></div>
     </div><button class="vw-bubble" data-action="toggle" aria-label="Open chat">${bubbleIcon}</button>`;
   }
 
@@ -173,6 +181,23 @@
     if (state.view === 'cart') body.innerHTML = renderCart();
     if (state.view === 'checkout') body.innerHTML = renderCheckout();
     wire();
+    scrollToLatest();
+  }
+
+  /* Jumps on the first paint, because there is nothing to animate from, and
+   * eases on every render after it. */
+  function scrollToLatest() {
+    if (state.view !== 'chat') return;
+    const body = shadow.querySelector('[data-body]');
+    if (!body) return;
+    const behavior = hasScrolled ? 'smooth' : 'auto';
+    hasScrolled = true;
+    try {
+      body.scrollTo({ top: body.scrollHeight, behavior });
+    } catch (err) {
+      // Older engines reject the options form of scrollTo.
+      body.scrollTop = body.scrollHeight;
+    }
   }
 
   function renderChat() {
@@ -182,10 +207,25 @@
     if (!state.messages.length && (b.suggestedQuestions || []).length) {
       html += '<div class="vw-faqs">' + b.suggestedQuestions.map((q) => `<button class="vw-faq" data-question="${ESC(q)}">${ESC(q)}</button>`).join('') + '</div>';
     }
-    html += state.messages.map((m) => `<div class="vw-msg ${m.role === 'user' ? 'user' : 'bot'}">${ESC(m.text)}</div>${renderBlocks(m.blocks || [])}`).join('');
+    // Quick replies hang off the first answer only. After that the
+    // conversation has its own momentum and the chips are just clutter.
+    const firstAnswer = state.messages.findIndex((m) => m.role !== 'user');
+    html += state.messages.map((m, index) => {
+      const bubble = `<div class="vw-msg ${m.role === 'user' ? 'user' : 'bot'}">${ESC(m.text)}</div>`;
+      return bubble + renderBlocks(m.blocks || []) + (index === firstAnswer ? quickReplies() : '');
+    }).join('');
     if (state.attachmentUrl) html += `<div class="vw-attachment">Attached: ${ESC(state.attachmentName || 'photo')}</div>`;
-    if (state.sending) html += '<div class="vw-msg bot">Typing...</div>';
+    if (state.sending) html += '<div class="vw-msg bot"><span class="vw-typing" role="status" aria-label="Assistant is typing"><span></span><span></span><span></span></span></div>';
     return html;
+  }
+
+  /* The same chips the welcome screen offers, shown once under the first
+   * answer for a customer who is not sure what to ask next. Reuses the vw-faq
+   * class and the data-question handler wire() already binds. */
+  function quickReplies() {
+    const questions = ((state.config || {}).suggestedQuestions || []).slice(0, 3);
+    if (!questions.length) return '';
+    return '<div class="vw-faqs vw-quick">' + questions.map((q) => `<button class="vw-faq" data-question="${ESC(q)}">${ESC(q)}</button>`).join('') + '</div>';
   }
 
   function renderBlocks(blocks) { return blocks.map(renderBlock).join(''); }
@@ -193,7 +233,11 @@
     if (!block || !block.type) return '';
     if (block.type === 'products') {
       const items = block.items || [];
-      return `<section class="vw-card"><div class="vw-card-title">${ESC(block.heading || 'Recommended for you')}</div><div class="vw-products">${items.map(renderProduct).join('')}</div></section>`;
+      if (!items.length) return '';
+      // How many products there are decides how they are shown: one gets the
+      // room to be looked at, two get compared, more than two get listed.
+      const mode = items.length === 1 ? 'hero' : (items.length === 2 ? 'compare' : 'rows');
+      return `<section class="vw-card"><div class="vw-card-title">${ESC(block.heading || 'Recommended for you')}</div><div class="vw-products vw-products-${mode}">${items.map((item, index) => renderProduct(item, mode, index)).join('')}</div></section>`;
     }
     if (block.type === 'offers') return `<section class="vw-card"><div class="vw-card-title">Offers</div><div class="vw-offers">${(block.items || []).map((o) => `<div class="vw-offer"><strong>${ESC(o.title)}</strong>${o.code ? ` · ${ESC(o.code)}` : ''}<br>${ESC(o.description || '')}</div>`).join('')}</div></section>`;
     if (block.type === 'order') return renderOrder(block.order);
@@ -203,32 +247,121 @@
     return '';
   }
 
-  /* One card, with an Add control wired to the same window.Cart the
-   * storefront writes to. A product with several sizes in stock reveals an
-   * inline select on the first click and only goes into the cart on the
-   * second, so a size is never guessed on the customer's behalf. Cards from
-   * suggest_add_ons carry no sizesInStock at all, and those add on one
-   * click. */
-  function renderProduct(p) {
-    const ref = productRefs.push(p) - 1;
+  /* What the customer has picked on a card, and what can be defaulted.
+   *
+   * A single option is not really a choice, so it is treated as already
+   * chosen. That is what lets a one-size, one-colour product add on the first
+   * tap while a product with real options waits for them. */
+  function productOptions(p) {
     const sizes = Array.isArray(p.sizesInStock) ? p.sizesInStock : [];
-    const soldOut = p.inStock === false;
-    const picking = !soldOut && sizes.length > 1 && Boolean(state.sizePicker[p.id]);
-    const image = SAFE_URL(p.imageUrl) ? `<img src="${ESC(SAFE_URL(p.imageUrl))}" alt="${ESC(p.name)}">` : '';
-    const meta = soldOut ? 'Out of stock' : (sizes.length ? 'Sizes: ' + ESC(sizes.join(', ')) : 'In stock');
-    const picker = picking
-      ? `<div class="vw-field vw-product-size"><label for="vw-size-${ref}">Size</label><select id="vw-size-${ref}" data-size-select="${ref}">${sizes.map((size) => `<option value="${ESC(size)}">${ESC(size)}</option>`).join('')}</select></div>`
-      : '';
-    const button = soldOut
-      ? ''
-      : `<button type="button" class="vw-btn vw-product-add" data-action="add-to-cart" data-product="${ref}">${picking ? 'Add to cart' : 'Add'}</button>`;
-    const added = state.addedProductId === p.id ? '<div class="vw-product-added">Added to cart</div>' : '';
-    return `<article class="vw-product">${image}<div class="vw-product-copy"><div class="vw-product-name">${ESC(p.name)}</div><div class="vw-product-price">${ESC(p.price || '')}</div><div class="vw-product-meta">${meta}</div>${picker}${button}${added}</div></article>`;
+    const colors = Array.isArray(p.colorsInStock) ? p.colorsInStock : [];
+    const chosen = state.productChoice[p.id] || {};
+    return {
+      sizes,
+      colors,
+      size: chosen.size || (sizes.length === 1 ? sizes[0] : ''),
+      color: chosen.color || (colors.length === 1 ? colors[0] : ''),
+    };
   }
 
-  /* Reads the size off the revealed select rather than off state, so the
-   * customer's current choice is used even though nothing re-rendered when
-   * they changed it. */
+  /* The one gate between a product card and the cart.
+   *
+   * src/routes/orders.js resolves every posted line to a variant with the
+   * composite key productId::size::color and fails the whole checkout when no
+   * variant matches. A line missing either half of that key is therefore
+   * unbuyable, and returning null here is what keeps it out of the cart
+   * instead of surfacing as a checkout error several screens later. */
+  function cartLineFor(product, size, color) {
+    if (!product || !product.id || !size || !color) return null;
+    return {
+      productId: product.id,
+      name: product.name,
+      price: pricePaise(product),
+      imageUrl: product.imageUrl,
+      size,
+      color,
+      qty: 1,
+    };
+  }
+
+  function addHintText(sizes, colors, size, color) {
+    // No options at all means the block predates colorsInStock, or every
+    // variant is gone. Either way there is nothing for the customer to pick.
+    if (!sizes.length || !colors.length) return 'Options unavailable';
+    if (!size) return 'Choose a size';
+    if (!color) return 'Choose a colour';
+    return '';
+  }
+
+  /* Tappable chips rather than a select: every option stays visible, and it
+   * is one tap on a phone instead of a native picker sheet. */
+  function chipRow(ref, kind, label, values, selected) {
+    if (!values.length) return '';
+    return `<div class="vw-chips" role="group" aria-label="${ESC(label)}"><span class="vw-chips-label">${ESC(label)}</span>${values.map((value) => `<button type="button" class="vw-chip${value === selected ? ' selected' : ''}" data-chip="${ref}" data-chip-kind="${ESC(kind)}" data-chip-value="${ESC(value)}" aria-pressed="${value === selected ? 'true' : 'false'}">${ESC(value)}</button>`).join('')}</div>`;
+  }
+
+  /* One card in one of three modes. The copy block is shared, the frame
+   * around it is what changes. */
+  function renderProduct(p, mode, index) {
+    const ref = productRefs.push(p) - 1;
+    const { sizes, colors, size, color } = productOptions(p);
+    const soldOut = p.inStock === false;
+    const image = SAFE_URL(p.imageUrl) ? `<img src="${ESC(SAFE_URL(p.imageUrl))}" alt="${ESC(p.name)}">` : '';
+
+    let controls = '';
+    if (soldOut) {
+      // No Add button at all on a sold out card: a disabled one still invites
+      // the tap that cannot work.
+      controls = '<div class="vw-product-meta">Out of stock</div>';
+    } else {
+      const chips = chipRow(ref, 'size', 'Size', sizes, size)
+        + (colors.length > 1 ? chipRow(ref, 'color', 'Colour', colors, color) : '')
+        + (colors.length === 1 ? `<div class="vw-product-meta">Colour: ${ESC(colors[0])}</div>` : '');
+      const ready = Boolean(cartLineFor(p, size, color));
+      controls = `${chips}<div class="vw-product-hint">${ESC(addHintText(sizes, colors, size, color))}</div><button type="button" class="vw-btn vw-product-add" data-action="add-to-cart" data-product="${ref}"${ready ? '' : ' disabled'}>Add</button>`;
+    }
+
+    const copy = `<div class="vw-product-copy"><div class="vw-product-name">${ESC(p.name)}</div><div class="vw-product-price">${ESC(p.price || '')}</div>${p.fabric ? `<div class="vw-product-meta">${ESC(p.fabric)}</div>` : ''}${controls}</div>`;
+
+    // The first of a pair is the one the agent put first, which is the one it
+    // is recommending.
+    const recommended = mode === 'compare' && index === 0;
+    const classes = ['vw-product', `vw-product-${mode}`];
+    if (recommended) classes.push('vw-product-recommended');
+    if (soldOut) classes.push('vw-product-soldout');
+
+    return `<article class="${classes.join(' ')}">${recommended ? '<div class="vw-product-badge">Recommended</div>' : ''}${image}${copy}</article>`;
+  }
+
+  /* Chip taps and Add both update the DOM in place. render() rebuilds the
+   * whole panel including the message field, so re-rendering here would drop
+   * anything the customer had half typed. */
+  function selectChip(el) {
+    const ref = el.getAttribute('data-chip');
+    const product = productRefs[Number(ref)];
+    if (!product) return;
+    const kind = el.getAttribute('data-chip-kind');
+    const choice = state.productChoice[product.id] || (state.productChoice[product.id] = {});
+    choice[kind] = el.getAttribute('data-chip-value');
+
+    el.parentNode.querySelectorAll('.vw-chip').forEach((chip) => {
+      const on = chip === el;
+      chip.classList.toggle('selected', on);
+      chip.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+    syncAddButton(ref);
+  }
+
+  function syncAddButton(ref) {
+    const product = productRefs[Number(ref)];
+    const button = shadow.querySelector(`[data-action="add-to-cart"][data-product="${ref}"]`);
+    if (!product || !button) return;
+    const { sizes, colors, size, color } = productOptions(product);
+    button.disabled = !cartLineFor(product, size, color);
+    const hint = button.parentNode.querySelector('.vw-product-hint');
+    if (hint) hint.textContent = addHintText(sizes, colors, size, color);
+  }
+
   function addProductToCart(ref) {
     const product = productRefs[Number(ref)];
     if (!product) return;
@@ -238,25 +371,34 @@
       return;
     }
 
-    const sizes = Array.isArray(product.sizesInStock) ? product.sizesInStock : [];
-    if (sizes.length > 1 && !state.sizePicker[product.id]) {
-      state.sizePicker[product.id] = true;
-      state.addedProductId = null;
-      render();
-      return;
-    }
+    const { size, color } = productOptions(product);
+    const line = cartLineFor(product, size, color);
+    // The button is already disabled in this state; this is the second lock on
+    // the same door, because an unbuyable line fails at checkout, not here.
+    if (!line) return;
 
-    const select = shadow.querySelector(`[data-size-select="${ref}"]`);
-    const size = select ? select.value : (sizes[0] || '');
     window.Cart.add(
-      { id: product.id, name: product.name, price: pricePaise(product), imageUrl: product.imageUrl },
-      size,
-      product.color || '',
-      1
+      { id: line.productId, name: line.name, price: line.price, imageUrl: line.imageUrl },
+      line.size,
+      line.color,
+      line.qty
     );
-    state.sizePicker[product.id] = false;
-    state.addedProductId = product.id;
-    render();
+    flashAdded(ref);
+  }
+
+  function flashAdded(ref) {
+    const button = shadow.querySelector(`[data-action="add-to-cart"][data-product="${ref}"]`);
+    if (!button) return;
+    if (addedTimers[ref]) clearTimeout(addedTimers[ref]);
+    button.textContent = 'Added';
+    button.classList.add('added');
+    addedTimers[ref] = setTimeout(() => {
+      delete addedTimers[ref];
+      const live = shadow.querySelector(`[data-action="add-to-cart"][data-product="${ref}"]`);
+      if (!live) return;
+      live.textContent = 'Add';
+      live.classList.remove('added');
+    }, 1600);
   }
 
   function renderOrder(order) {
@@ -290,7 +432,6 @@
 
   async function sendChat(text, attachmentUrl = null) {
     state.messages.push({ role: 'user', text: text || (attachmentUrl ? 'I attached a photo.' : '') });
-    state.addedProductId = null;
     state.sending = true;
     state.attachmentUrl = null;
     state.attachmentName = '';
@@ -438,6 +579,7 @@
     });
     shadow.querySelectorAll('[data-question]').forEach((el) => el.addEventListener('click', () => sendChat(el.getAttribute('data-question'))));
     shadow.querySelectorAll('[data-action="add-to-cart"]').forEach((el) => el.addEventListener('click', () => addProductToCart(el.getAttribute('data-product'))));
+    shadow.querySelectorAll('[data-chip]').forEach((el) => el.addEventListener('click', () => selectChip(el)));
     shadow.querySelector('[data-action="cart"]')?.addEventListener('click', () => { state.view = 'cart'; render(); });
     shadow.querySelector('[data-action="track"]')?.addEventListener('click', () => { state.view = 'track'; render(); });
     shadow.querySelector('[data-action="request-code"]')?.addEventListener('click', requestCode);
