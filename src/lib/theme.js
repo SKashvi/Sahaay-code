@@ -25,7 +25,9 @@ const { env } = require('../config/env');
  * before the config request answers, and these are what it falls back to. */
 const DEFAULTS = {
   accent: '#6C5FFF',
-  accentInk: '#FFFFFF',
+  // Near-white rather than #FFF: pure white on a saturated fill vibrates,
+  // and the rest of the palette already avoids pure black for the same reason.
+  accentInk: '#FDFDFD',
   bg: '#FFFFFF',
   tintFrom: '#FFFFFF',
   tintTo: '#F4F2FF',

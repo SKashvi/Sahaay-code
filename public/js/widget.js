@@ -82,7 +82,9 @@
     ordersNotice: '',
     // Which order's return form is open, and what is selected in it.
     returnFor: null,
-    returnReason: 'Wrong size',
+    // Empty, deliberately. A preselected reason is a reason the customer did
+    // not give, attached to a request a person will act on.
+    returnReason: '',
     returnItems: {},
     returnSubmitting: false,
     returnError: '',
@@ -364,6 +366,11 @@
   }
 
   function icon(name) {
+    if (name === 'cart-plus') return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="9" cy="20" r="1.4"/><circle cx="18" cy="20" r="1.4"/><path d="M2 3h2.2l2.3 11.2a1.7 1.7 0 0 0 1.7 1.3h8.6a1.7 1.7 0 0 0 1.7-1.3l.9-4.2"/><path d="M16 2.5v6M13 5.5h6"/></svg>';
+    if (name === 'chevron-left') return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>';
+    if (name === 'chevron-right') return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>';
+    if (name === 'chevron-down') return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>';
+    if (name === 'send') return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>';
     if (name === 'cart') return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6"/></svg>';
     if (name === 'clip') return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.4 11.6-8.8 8.8a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"/></svg>';
     if (name === 'close') return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6 6 18"/></svg>';
@@ -381,20 +388,32 @@
     const showCart = b.showCart !== false;
     const showTrack = b.showTrackOrders !== false;
     const bubbleIcon = icon(b.bubbleIcon === 'cart' ? 'cart' : 'chat');
+    const count = cartCount();
+    // A subview is anything other than the conversation, so the back chevron
+    // appears exactly when there is somewhere to go back to.
+    const inSubview = state.view !== 'chat';
+    const started = state.messages.length > 0;
+
     container.innerHTML = `<div class="vw-panel" role="dialog" aria-label="${ESC(b.brandName || 'Shopping assistant')}">
       <header class="vw-header">
-        ${b.logoDarkUrl || b.logoUrl ? logoHtml(true, 'vw-header-logo') : `<strong class="vw-header-name">${ESC(b.brandName || '')}</strong>`}
-        ${showCart ? `<button class="vw-header-btn" data-action="cart" title="View cart" aria-label="View cart">${icon('cart')}</button>` : ''}
-        ${showTrack ? `<button class="vw-header-btn" data-action="track">Track orders</button>` : ''}
-        <button class="vw-header-btn" data-action="close" title="Close" aria-label="Close">${icon('close')}</button>
+        ${inSubview ? `<button type="button" class="vw-pill vw-pill-icon" data-action="back" title="Back" aria-label="Back">${icon('chevron-left')}</button>` : ''}
+        <span class="vw-header-spacer"></span>
+        ${showCart ? `<span class="vw-pill-wrap"><button type="button" class="vw-pill vw-pill-icon" data-action="cart" title="View cart" aria-label="View cart">${icon('cart')}</button><span class="vw-badge" data-cart-badge ${count ? '' : 'hidden'}>${ESC(count)}</span></span>` : ''}
+        ${showTrack ? `<button type="button" class="vw-pill" data-action="track">Track orders</button>` : ''}
+        <button type="button" class="vw-pill vw-pill-icon" data-action="close" title="Close" aria-label="Close">${icon('close')}</button>
       </header>
       <main class="vw-body" data-body></main>
+      <button type="button" class="vw-scroll-end" data-action="scroll-end" aria-label="Scroll to newest" hidden>${icon('chevron-down')}</button>
       <form class="vw-input" data-chat-form>
-        <div class="vw-input-main"><input data-chat-input maxlength="1000" autocomplete="off" placeholder="Ask anything" ${state.sending ? 'disabled' : ''}><button type="button" class="vw-attach" data-action="attach" aria-label="Attach a photo">${icon('clip')}</button><input type="file" hidden accept="image/jpeg,image/png,image/webp" data-file></div>
-        <button class="vw-send" type="submit" ${state.sending ? 'disabled' : ''} aria-label="Send">↑</button>
+        <div class="vw-input-main">
+          <input data-chat-input maxlength="1000" autocomplete="off" placeholder="${started ? 'Reply' : 'Ask anything'}" ${state.sending ? 'disabled' : ''}>
+          <button type="button" class="vw-attach" data-action="attach" aria-label="Attach a photo">${icon('clip')}</button>
+          <input type="file" hidden accept="image/jpeg,image/png,image/webp" data-file>
+        </div>
+        <button class="vw-send" type="submit" data-send ${state.sending ? 'disabled' : ''} aria-label="Send" hidden>${icon('send')}</button>
       </form>
       <div class="vw-footer">Powered by <a href="${ESC(SAFE_URL(POWERED_BY_URL))}" target="_blank" rel="noopener noreferrer">Sahaay</a></div>
-    </div><button class="vw-bubble" data-action="toggle" aria-label="Open chat">${bubbleIcon}</button>`;
+    </div><button type="button" class="vw-bubble" data-action="toggle" aria-label="Open chat">${bubbleIcon}</button>`;
   }
 
   function render() {
@@ -414,7 +433,44 @@
     if (state.view === 'checkout') body.innerHTML = renderCheckout();
     if (state.view === 'orders') body.innerHTML = renderOrders();
     wire();
+    refreshBadge();
+    syncComposer();
     scrollToLatest();
+    syncScrollButton();
+  }
+
+  /* The cart count, updated in place. A full render would rebuild the panel
+   * and drop whatever was half typed in the composer, so the badge is touched
+   * directly and this can be called from a cart event at any moment. */
+  function refreshBadge() {
+    if (!shadow) return;
+    const badge = shadow.querySelector('[data-cart-badge]');
+    if (!badge) return;
+    const count = cartCount();
+    badge.textContent = String(count);
+    badge.hidden = count === 0;
+  }
+
+  /* The send button only exists once there is something to send, and the
+   * scroll-to-bottom button only once the view is actually scrolled up. Both
+   * are direct DOM for the same reason as the badge. */
+  function syncComposer() {
+    if (!shadow) return;
+    const input = shadow.querySelector('[data-chat-input]');
+    const send = shadow.querySelector('[data-send]');
+    if (!input || !send) return;
+    const hasContent = Boolean(input.value.trim()) || Boolean(state.attachmentUrl);
+    send.hidden = !hasContent;
+  }
+
+  function syncScrollButton() {
+    if (!shadow) return;
+    const body = shadow.querySelector('[data-body]');
+    const button = shadow.querySelector('[data-action="scroll-end"]');
+    if (!body || !button) return;
+    // 48px of slack, so the button does not flicker at the very bottom.
+    const distance = body.scrollHeight - body.scrollTop - body.clientHeight;
+    button.hidden = state.view !== 'chat' || distance < 48;
   }
 
   /* Jumps on the first paint, because there is nothing to animate from, and
@@ -436,12 +492,14 @@
   function renderChat() {
     const b = state.config;
     productRefs.length = 0;
-    let html = `<section class="vw-welcome">${logoHtml(false)}<div class="vw-welcome-title">${ESC(b.brandName || '')}</div><div class="vw-welcome-copy">${ESC(b.welcomeMessage || b.brandTagline || '')}</div></section>`;
-    if (!state.messages.length && (b.suggestedQuestions || []).length) {
-      html += '<div class="vw-faqs">' + b.suggestedQuestions.map((q) => `<button class="vw-faq" data-question="${ESC(q)}">${ESC(q)}</button>`).join('') + '</div>';
-    }
+
+    // Nothing said yet: the whole body is the empty state. Once a conversation
+    // exists it is gone, rather than sitting above the transcript as a header.
+    if (!state.messages.length && !state.sending) return renderEmptyState();
+
+    let html = '';
     // Quick replies hang off the first answer only. After that the
-    // conversation has its own momentum and the chips are just clutter.
+    // conversation has its own momentum and the chips are clutter.
     const firstAnswer = state.messages.findIndex((m) => m.role !== 'user');
     html += state.messages.map((m, index) => {
       const bubble = `<div class="vw-msg ${m.role === 'user' ? 'user' : 'bot'}">${ESC(m.text)}</div>`;
@@ -452,13 +510,41 @@
     return html;
   }
 
-  /* The same chips the welcome screen offers, shown once under the first
-   * answer for a customer who is not sure what to ask next. Reuses the vw-faq
-   * class and the data-question handler wire() already binds. */
-  function quickReplies() {
-    const questions = ((state.config || {}).suggestedQuestions || []).slice(0, 3);
+  /* Logo or wordmark, greeting, starter chips, over a soft vertical gradient.
+   * The chips each hug their own text rather than filling the width: a column
+   * of full-width bars reads as navigation, this reads as suggestions. */
+  function renderEmptyState() {
+    const b = state.config || {};
+    const t = state.theme || {};
+    const logo = SAFE_URL(t.logoUrl) || SAFE_URL(b.logoUrl);
+    const mark = logo
+      ? `<img class="vw-empty-logo" src="${ESC(logo)}" alt="${ESC(b.brandName || '')}">`
+      : `<div class="vw-empty-word">${ESC(b.brandName || '')}</div>`;
+    const greeting = t.greeting || b.welcomeMessage || b.brandTagline || '';
+    return `<section class="vw-empty-state">${mark}<div class="vw-empty-greeting">${ESC(greeting)}</div>${starterChips()}</section>`;
+  }
+
+  /* Theme suggestions first, because they are the tenant's own words. The
+   * widget_settings list is the fallback for a deployment that has not set
+   * them. */
+  function starterQuestions() {
+    const t = state.theme || {};
+    if (Array.isArray(t.suggestions) && t.suggestions.length) return t.suggestions;
+    return (state.config || {}).suggestedQuestions || [];
+  }
+
+  function starterChips() {
+    const questions = starterQuestions();
     if (!questions.length) return '';
-    return '<div class="vw-faqs vw-quick">' + questions.map((q) => `<button class="vw-faq" data-question="${ESC(q)}">${ESC(q)}</button>`).join('') + '</div>';
+    return '<div class="vw-faqs">' + questions.map((q) => `<button type="button" class="vw-faq" data-question="${ESC(q)}">${ESC(q)}</button>`).join('') + '</div>';
+  }
+
+  /* The same chips under the first answer, once, for a customer who is not
+   * sure what to ask next. */
+  function quickReplies() {
+    const questions = starterQuestions().slice(0, 3);
+    if (!questions.length) return '';
+    return '<div class="vw-faqs vw-quick">' + questions.map((q) => `<button type="button" class="vw-faq" data-question="${ESC(q)}">${ESC(q)}</button>`).join('') + '</div>';
   }
 
   function renderBlocks(blocks) { return blocks.map(renderBlock).join(''); }
@@ -540,37 +626,42 @@
     return `<div class="vw-chips" role="group" aria-label="${ESC(label)}"><span class="vw-chips-label">${ESC(label)}</span>${values.map((value) => `<button type="button" class="vw-chip${value === selected ? ' selected' : ''}" data-chip="${ref}" data-chip-kind="${ESC(kind)}" data-chip-value="${ESC(value)}" aria-pressed="${value === selected ? 'true' : 'false'}">${ESC(value)}</button>`).join('')}</div>`;
   }
 
-  /* One card in one of three modes. The copy block is shared, the frame
-   * around it is what changes. */
+  /* One card in one of three modes.
+   *
+   * The image fills the card top and the quick-add sits on it, rather than
+   * stacking under the copy, so a two-up grid keeps equal heights whatever the
+   * titles do. The price is muted: it is information, not the next action, and
+   * the accent belongs to the one thing on the screen that is. */
   function renderProduct(p, mode, index) {
     const ref = productRefs.push(p) - 1;
     const { sizes, colors, size, color } = productOptions(p);
     const soldOut = p.inStock === false;
-    const image = SAFE_URL(p.imageUrl) ? `<img src="${ESC(SAFE_URL(p.imageUrl))}" alt="${ESC(p.name)}">` : '';
+    const ready = !soldOut && Boolean(cartLineFor(p, size, color));
 
-    let controls = '';
-    if (soldOut) {
-      // No Add button at all on a sold out card: a disabled one still invites
-      // the tap that cannot work.
-      controls = '<div class="vw-product-meta">Out of stock</div>';
-    } else {
-      const chips = chipRow(ref, 'size', 'Size', sizes, size)
-        + (colors.length > 1 ? chipRow(ref, 'color', 'Colour', colors, color) : '')
-        + (colors.length === 1 ? `<div class="vw-product-meta">Colour: ${ESC(colors[0])}</div>` : '');
-      const ready = Boolean(cartLineFor(p, size, color));
-      controls = `${chips}<div class="vw-product-hint">${ESC(addHintText(sizes, colors, size, color))}</div><button type="button" class="vw-btn vw-product-add" data-action="add-to-cart" data-product="${ref}"${ready ? '' : ' disabled'}>Add</button>`;
-    }
-
-    const copy = `<div class="vw-product-copy"><div class="vw-product-name">${ESC(p.name)}</div><div class="vw-product-price">${ESC(p.price || '')}</div>${p.fabric ? `<div class="vw-product-meta">${ESC(p.fabric)}</div>` : ''}${controls}</div>`;
-
+    const image = SAFE_URL(p.imageUrl)
+      ? `<img src="${ESC(SAFE_URL(p.imageUrl))}" alt="${ESC(p.name)}">`
+      : '';
     // The first of a pair is the one the agent put first, which is the one it
     // is recommending.
     const recommended = mode === 'compare' && index === 0;
+
+    const quickAdd = soldOut
+      ? ''
+      : `<button type="button" class="vw-quick-add" data-action="add-to-cart" data-product="${ref}"${ready ? '' : ' disabled'} title="Add to cart" aria-label="Add ${ESC(p.name)} to cart">${icon('cart-plus')}</button>`;
+
+    const chips = soldOut ? '' : chipRow(ref, 'size', 'Size', sizes, size)
+      + (colors.length > 1 ? chipRow(ref, 'color', 'Colour', colors, color) : '')
+      + (colors.length === 1 ? `<div class="vw-product-meta">Colour: ${ESC(colors[0])}</div>` : '');
+
+    const hint = soldOut
+      ? '<div class="vw-product-meta">Out of stock</div>'
+      : `<div class="vw-product-hint">${ESC(addHintText(sizes, colors, size, color))}</div>`;
+
     const classes = ['vw-product', `vw-product-${mode}`];
     if (recommended) classes.push('vw-product-recommended');
     if (soldOut) classes.push('vw-product-soldout');
 
-    return `<article class="${classes.join(' ')}">${recommended ? '<div class="vw-product-badge">Recommended</div>' : ''}${image}${copy}</article>`;
+    return `<article class="${classes.join(' ')}"><div class="vw-product-media">${recommended ? '<span class="vw-product-badge">Recommended</span>' : ''}${image}${quickAdd}</div><div class="vw-product-copy"><div class="vw-product-name">${ESC(p.name)}</div><div class="vw-product-price">${ESC(p.price || '')}</div>${chips}${hint}</div></article>`;
   }
 
   /* Chip taps and Add both update the DOM in place. render() rebuilds the
@@ -633,15 +724,14 @@
     const button = shadow.querySelector(`[data-action="add-to-cart"][data-product="${ref}"]`);
     if (!button) return;
     if (addedTimers[ref]) clearTimeout(addedTimers[ref]);
-    button.textContent = 'Added';
+    // The icon button has no label to change, so the confirmation is the fill
+    // flipping to accent for a moment.
     button.classList.add('added');
     addedTimers[ref] = setTimeout(() => {
       delete addedTimers[ref];
       const live = shadow.querySelector(`[data-action="add-to-cart"][data-product="${ref}"]`);
-      if (!live) return;
-      live.textContent = 'Add';
-      live.classList.remove('added');
-    }, 1600);
+      if (live) live.classList.remove('added');
+    }, 1400);
   }
 
   function renderOrder(order) {
@@ -654,10 +744,12 @@
     return `<section class="vw-card"><div class="vw-card-title">Verify your order</div><div class="vw-empty">${message}</div><div class="vw-field vw-code-field"><input class="vw-code" maxlength="6" inputmode="numeric" autocomplete="one-time-code" data-verify-code placeholder="000000"></div><button type="button" class="vw-btn" data-action="verify-code" ${state.verifying ? 'disabled' : ''}>Verify</button><div class="vw-empty" data-verify-msg></div></section>`;
   }
 
-  /* One order, with the progress steps the storefront's tracking page draws
-   * and the actions that apply to its current state. Every button behind it
-   * calls an API directly: none of them go through the chat, so none of them
-   * can be blocked by the model being slow, rate limited or down. */
+  /* One order.
+   *
+   * The order ID is the largest, heaviest element here and everything else
+   * steps down from it. Exactly one primary button: Track. Report an issue is
+   * secondary, and the rest of the actions are ghosts, because a screen with
+   * two accent fills has no next step, it has two competing ones. */
   function renderOrderPanel(order) {
     if (!order) return '';
     const cancelled = order.status === 'CANCELLED';
@@ -667,40 +759,47 @@
     const track = cancelled
       ? '<div class="vw-order-cancelled">This order was cancelled.</div>'
       : `<div class="vw-steps">${stages.map((stage, index) => {
+          // Reached, current, and not yet. Future states fade to faint so the
+          // eye lands on where the order actually is.
           const cls = index < order.stageIndex ? 'done' : index === order.stageIndex ? 'current' : '';
           return `<div class="vw-step ${cls}"><span class="vw-step-dot"></span><span class="vw-step-label">${ESC(labels[stage] || stage)}</span></div>`;
         }).join('')}</div>`;
 
-    const items = (order.items || []).map((item) => `<div class="vw-order-item"><span>${ESC(item.name)} · ${ESC(item.size)} · ${ESC(item.color)} × ${ESC(item.qty)}</span><span>${ESC(item.price)}</span></div>`).join('');
+    const items = (order.items || []).map((item) => `<div class="vw-order-item"><span>${ESC(item.name)}<br><span class="vw-order-item-variant">${ESC(item.size)} · ${ESC(item.color)} × ${ESC(item.qty)}</span></span><span>${ESC(item.price)}</span></div>`).join('');
 
     const tracking = order.tracking
-      ? `<div class="vw-order-tracking">Tracking: ${ESC(order.tracking.carrier || '')} ${ESC(order.tracking.number || '')}${SAFE_URL(order.tracking.url) ? ` · <a class="vw-link" href="${ESC(SAFE_URL(order.tracking.url))}" target="_blank" rel="noopener noreferrer">Open tracking</a>` : ''}</div>`
-      : '<div class="vw-empty vw-order-tracking">Tracking is not available yet.</div>';
+      ? `<div class="vw-order-tracking">${ESC(order.tracking.carrier || '')} ${ESC(order.tracking.number || '')}${SAFE_URL(order.tracking.url) ? ` · <a class="vw-link" href="${ESC(SAFE_URL(order.tracking.url))}" target="_blank" rel="noopener noreferrer">Open tracking</a>` : ''}</div>`
+      : '<div class="vw-order-tracking vw-empty">Tracking is not available yet.</div>';
 
-    // Drawn from what the server said, and every endpoint behind them checks
-    // again, so a stale panel cannot cancel something it should not.
+    // Track is the single primary. Cancel and Return are ghosts rather than
+    // secondaries: they are rarer and more consequential, and should not look
+    // like the obvious next tap.
     const actions = [
-      `<button type="button" class="vw-btn secondary" data-action="order-track" data-order="${ESC(order.displayId)}">Track</button>`,
-      order.canCancel ? `<button type="button" class="vw-btn secondary" data-action="order-cancel" data-order="${ESC(order.displayId)}">Cancel order</button>` : '',
-      order.canRequestReturn ? `<button type="button" class="vw-btn secondary" data-action="order-return" data-order="${ESC(order.displayId)}">Return items</button>` : '',
+      `<button type="button" class="vw-btn" data-action="order-track" data-order="${ESC(order.displayId)}">Track</button>`,
       `<button type="button" class="vw-btn secondary" data-action="order-issue" data-order="${ESC(order.displayId)}">Report an issue</button>`,
+      order.canRequestReturn ? `<button type="button" class="vw-btn ghost" data-action="order-return" data-order="${ESC(order.displayId)}">Return items</button>` : '',
+      order.canCancel ? `<button type="button" class="vw-btn ghost" data-action="order-cancel" data-order="${ESC(order.displayId)}">Cancel order</button>` : '',
     ].filter(Boolean).join('');
 
-    return `<section class="vw-card"><div class="vw-card-title">Order ${ESC(order.displayId)}</div><div class="vw-status">${ESC(order.statusLabel || order.status)}</div>${track}${items}<div class="vw-order-total"><span>Total</span><strong>${ESC(order.total || '')}</strong></div>${tracking}<div class="vw-actions">${actions}</div>${renderReturnForm(order)}</section>`;
+    return `<section class="vw-card"><div class="vw-order-id">${ESC(order.displayId)}</div><div class="vw-order-status">${ESC(order.statusLabel || order.status)}</div>${track}${items}<div class="vw-order-total"><span class="vw-empty">Total</span><strong>${ESC(order.total || '')}</strong></div>${tracking}<div class="vw-actions">${actions}</div>${renderReturnForm(order)}</section>`;
   }
 
-  /* Opened by Return or Report an issue. Posts to /api/returns directly, with
-   * the email taken from the verified session rather than a field. */
+  /* Opened by Return or Report an issue. Send for review is the one primary,
+   * Attach a photo is secondary, Not now is a ghost. */
   function renderReturnForm(order) {
     if (state.returnFor !== order.displayId) return '';
     const reasons = ['Wrong size', 'Damaged item', 'Not as described', 'Changed my mind'];
-    const rows = (order.items || []).map((item) => `<label class="vw-return-row"><input type="checkbox" data-return-item="${ESC(item.itemId)}"${state.returnItems[item.itemId] ? ' checked' : ''}> <span>${ESC(item.name)} · ${ESC(item.size)} · ${ESC(item.color)}</span></label>`).join('');
-    return `<div class="vw-return-form"><div class="vw-card-title">What went wrong?</div>${rows}<div class="vw-field"><label for="vw-return-reason">Reason</label><select id="vw-return-reason" data-return-reason>${reasons.map((r) => `<option value="${ESC(r)}"${r === state.returnReason ? ' selected' : ''}>${ESC(r)}</option>`).join('')}</select></div>${state.attachmentUrl ? `<div class="vw-attachment">Photo attached: ${ESC(state.attachmentName || 'photo')}</div>` : '<button type="button" class="vw-btn secondary vw-return-attach" data-action="attach">Attach a photo</button>'}<div class="vw-actions"><button type="button" class="vw-btn" data-action="return-submit"${state.returnSubmitting ? ' disabled' : ''}>${state.returnSubmitting ? 'Sending...' : 'Send for review'}</button><button type="button" class="vw-btn secondary" data-action="return-cancel">Not now</button></div>${state.returnError ? `<div class="vw-order-error">${ESC(state.returnError)}</div>` : ''}<div class="vw-empty">This is a request. A person reviews it and emails you the decision.</div></div>`;
+    const rows = (order.items || []).map((item) => `<label class="vw-return-row"><input type="checkbox" data-return-item="${ESC(item.itemId)}"${state.returnItems[item.itemId] ? ' checked' : ''}> <span>${ESC(item.name)} <span class="vw-order-item-variant">${ESC(item.size)} · ${ESC(item.color)}</span></span></label>`).join('');
+    // Nothing may be sent until an item and a reason are both chosen. The
+    // reason opens empty rather than on whichever option happened to be first.
+    const chosenItem = Object.keys(state.returnItems).some((key) => state.returnItems[key]);
+    const ready = chosenItem && Boolean(state.returnReason);
+    return `<div class="vw-return-form"><div class="vw-card-title">What went wrong?</div>${rows}<div class="vw-field"><label for="vw-return-reason">Reason</label><select id="vw-return-reason" data-return-reason><option value="" ${state.returnReason ? '' : 'selected'} disabled>Select a reason</option>${reasons.map((r) => `<option value="${ESC(r)}"${r === state.returnReason ? ' selected' : ''}>${ESC(r)}</option>`).join('')}</select></div>${state.attachmentUrl ? `<div class="vw-attachment">Photo attached: ${ESC(state.attachmentName || 'photo')}</div>` : '<button type="button" class="vw-btn secondary" data-action="attach">Attach a photo</button>'}<div class="vw-actions"><button type="button" class="vw-btn" data-action="return-submit"${state.returnSubmitting || !ready ? ' disabled' : ''}>${state.returnSubmitting ? 'Sending...' : 'Send for review'}</button><button type="button" class="vw-btn ghost" data-action="return-cancel">Not now</button></div>${state.returnError ? `<div class="vw-order-error">${ESC(state.returnError)}</div>` : ''}<div class="vw-empty">This is a request. A person reviews it and emails you the decision.</div></div>`;
   }
 
   function renderOrders() {
     if (!state.verified) {
-      return `<section class="vw-card"><div class="vw-card-title">Your orders</div><div class="vw-empty">Verify your email to see an order.</div><div class="vw-actions"><button class="vw-btn" data-action="track">Verify</button></div></section>`;
+      return `<section class="vw-card"><div class="vw-card-title">Your orders</div><div class="vw-empty">Verify your email to see an order.</div><div class="vw-actions"><button type="button" class="vw-btn" data-action="track">Verify</button></div></section>`;
     }
     let html = '';
     if (state.ordersNotice) html += `<div class="vw-order-notice">${ESC(state.ordersNotice)}</div>`;
@@ -714,13 +813,15 @@
     } else if (state.orders) {
       html += '<section class="vw-card"><div class="vw-card-title">Your orders</div><div class="vw-empty">We could not find an order for this session.</div></section>';
     }
-    html += `<div class="vw-actions"><button class="vw-btn secondary" data-action="refresh-order">Refresh</button><button class="vw-btn secondary" data-action="back-to-chat">Ask a question</button><button class="vw-btn secondary" data-action="signout">Sign out</button></div>`;
+    // All three are ghosts: none of them is the next step, they are ways out.
+    // Sign out sits last and quietest, because it is the one that undoes work.
+    html += `<div class="vw-actions footer"><button type="button" class="vw-btn ghost" data-action="refresh-order">Refresh</button><button type="button" class="vw-btn ghost" data-action="back-to-chat">Ask a question</button><button type="button" class="vw-btn ghost quiet" data-action="signout">Sign out</button></div>`;
     return html;
   }
 
   function renderTrack() {
-    if (state.verified) return `<section class="vw-card"><div class="vw-card-title">Signed in</div><div class="vw-empty">Your order is linked to this session.</div><div class="vw-actions"><button class="vw-btn" data-action="refresh-order">Show order status</button><button class="vw-btn secondary" data-action="signout">Sign out</button></div></section>`;
-    return `<section class="vw-card"><div class="vw-card-title">Track orders</div><div class="vw-field"><label>Email used at checkout</label><input type="email" data-track-email value="${ESC(state.trackEmail)}"></div><div class="vw-field"><label>Order ID</label><input data-track-order value="${ESC(state.trackOrderId)}" placeholder="VEL-XXXXXX"></div>${state.codeSent ? `<div class="vw-field"><label>Six digit code</label><input class="vw-code" data-track-code maxlength="6" inputmode="numeric"></div><div class="vw-actions"><button class="vw-btn" data-action="track-verify">Verify code</button></div>` : `<button class="vw-btn" data-action="request-code">Email me a code</button>`}<div class="vw-empty" data-track-msg></div></section>`;
+    if (state.verified) return `<section class="vw-card"><div class="vw-card-title">Signed in</div><div class="vw-empty">Your order is linked to this session.</div><div class="vw-actions"><button type="button" class="vw-btn" data-action="refresh-order">Show order status</button><button type="button" class="vw-btn secondary" data-action="signout">Sign out</button></div></section>`;
+    return `<section class="vw-card"><div class="vw-card-title">Track orders</div><div class="vw-field"><label>Email used at checkout</label><input type="email" data-track-email value="${ESC(state.trackEmail)}"></div><div class="vw-field"><label>Order ID</label><input data-track-order value="${ESC(state.trackOrderId)}" placeholder="VEL-XXXXXX"></div>${state.codeSent ? `<div class="vw-field"><label>Six digit code</label><input class="vw-code" data-track-code maxlength="6" inputmode="numeric"></div><div class="vw-actions"><button type="button" class="vw-btn" data-action="track-verify">Verify code</button></div>` : `<button type="button" class="vw-btn" data-action="request-code">Email me a code</button>`}<div class="vw-empty" data-track-msg></div></section>`;
   }
 
   /* ------------------------------ the cart ------------------------------ */
@@ -824,23 +925,30 @@
     return cartStore.get();
   }
 
+  function cartCount() {
+    return cartLines().reduce((sum, line) => sum + (Number(line.qty) || 0), 0);
+  }
+
   /* Re-reads and repaints, but only when the panel is actually showing the
    * cart or the checkout built from it. Anywhere else there is nothing on
    * screen that could be stale, and a render would cost the customer whatever
    * they had typed in the message field. */
   function refreshCart() {
     if (!shadow || !state.config) return;
+    // The badge is always live, whatever view is open, because it is on the
+    // header and the header is always on screen.
+    refreshBadge();
     if (state.view === 'cart' || state.view === 'checkout') render();
   }
 
   function renderCart() {
     const cart = cartLines();
-    return `<section class="vw-card"><div class="vw-card-title">Your cart</div>${cart.length ? cart.map((line) => `<div class="vw-cart-line">${SAFE_URL(line.imageUrl) ? `<img src="${ESC(SAFE_URL(line.imageUrl))}" alt="">` : ''}<div class="vw-cart-info"><div class="vw-cart-name">${ESC(line.name)}</div><div class="vw-cart-meta">${ESC(line.size)}, ${ESC(line.color)} × ${ESC(line.qty)}</div></div><strong>${ESC(money(line.price * line.qty))}</strong></div>`).join('') + `<div class="vw-actions"><button class="vw-btn" data-action="checkout">Checkout</button></div>` : '<div class="vw-empty">Your cart is empty. Add something from the storefront.</div>'}</section>`;
+    return `<section class="vw-card"><div class="vw-card-title">Your cart</div>${cart.length ? cart.map((line) => `<div class="vw-cart-line">${SAFE_URL(line.imageUrl) ? `<img src="${ESC(SAFE_URL(line.imageUrl))}" alt="">` : ''}<div class="vw-cart-info"><div class="vw-cart-name">${ESC(line.name)}</div><div class="vw-cart-meta">${ESC(line.size)}, ${ESC(line.color)} × ${ESC(line.qty)}</div></div><strong>${ESC(money(line.price * line.qty))}</strong></div>`).join('') + `<div class="vw-actions"><button type="button" class="vw-btn" data-action="checkout">Checkout</button></div>` : '<div class="vw-empty">Your cart is empty. Add something from the storefront.</div>'}</section>`;
   }
 
   function renderCheckout() {
     if (!cartLines().length) return '<section class="vw-card"><div class="vw-card-title">Checkout</div><div class="vw-empty">Your cart is empty.</div></section>';
-    return `<section class="vw-card"><div class="vw-card-title">Secure checkout</div><form data-checkout-form><div class="vw-field"><label>Full name</label><input name="name" required></div><div class="vw-field"><label>Email</label><input name="email" type="email" required></div><div class="vw-field"><label>Phone</label><input name="phone" required></div><div class="vw-field"><label>Address</label><input name="address" required></div><div class="vw-field"><label>City</label><input name="city" required></div><div class="vw-field"><label>State</label><input name="state" required></div><div class="vw-field"><label>PIN code</label><input name="pincode" required></div><div class="vw-field"><label>Offer code (optional)</label><input name="offerCode" autocomplete="off"></div><button class="vw-btn" ${state.cartSubmitting ? 'disabled' : ''}>Pay securely</button><div class="vw-empty" data-checkout-msg></div></form></section>`;
+    return `<section class="vw-card"><div class="vw-card-title">Secure checkout</div><form data-checkout-form><div class="vw-field"><label>Full name</label><input name="name" required></div><div class="vw-field"><label>Email</label><input name="email" type="email" required></div><div class="vw-field"><label>Phone</label><input name="phone" required></div><div class="vw-field"><label>Address</label><input name="address" required></div><div class="vw-field"><label>City</label><input name="city" required></div><div class="vw-field"><label>State</label><input name="state" required></div><div class="vw-field"><label>PIN code</label><input name="pincode" required></div><div class="vw-field"><label>Offer code (optional)</label><input name="offerCode" autocomplete="off"></div><button type="submit" class="vw-btn" ${state.cartSubmitting ? 'disabled' : ''}>Pay securely</button><div class="vw-empty" data-checkout-msg></div></form></section>`;
   }
 
   async function sendChat(text, attachmentUrl = null) {
@@ -1003,9 +1111,11 @@
     }
   }
 
-  function openReturnForm(displayId, reason) {
+  function openReturnForm(displayId) {
     state.returnFor = displayId;
-    state.returnReason = reason || 'Wrong size';
+    // Not preseeded from which button was pressed: Report an issue and Return
+    // are two ways into the same form, and neither knows what went wrong.
+    state.returnReason = '';
     state.returnItems = {};
     state.returnError = '';
     state.ordersNotice = '';
@@ -1021,6 +1131,11 @@
       .map((itemId) => ({ orderItemId: itemId, quantity: 1 }));
     if (!items.length) {
       state.returnError = 'Pick at least one item.';
+      render();
+      return;
+    }
+    if (!state.returnReason) {
+      state.returnError = 'Choose a reason.';
       render();
       return;
     }
@@ -1137,6 +1252,24 @@
       sendChat(text, state.attachmentUrl);
     });
     shadow.querySelectorAll('[data-action="attach"]').forEach((el) => el.addEventListener('click', () => shadow.querySelector('[data-file]').click()));
+    // The send button appears with content rather than sitting there greyed
+    // out, so it is only ever an invitation to press it.
+    shadow.querySelector('[data-chat-input]')?.addEventListener('input', syncComposer);
+    shadow.querySelector('[data-body]')?.addEventListener('scroll', syncScrollButton, { passive: true });
+    shadow.querySelector('[data-action="scroll-end"]')?.addEventListener('click', () => {
+      const body = shadow.querySelector('[data-body]');
+      if (!body) return;
+      try { body.scrollTo({ top: body.scrollHeight, behavior: 'smooth' }); }
+      catch (err) { body.scrollTop = body.scrollHeight; }
+    });
+    // One back affordance for every subview, so a customer is never stranded
+    // somewhere with no way to the conversation.
+    shadow.querySelector('[data-action="back"]')?.addEventListener('click', () => {
+      if (state.view === 'orders' && state.orderDetail) { state.orderDetail = null; render(); return; }
+      if (state.view === 'checkout') { state.view = 'cart'; render(); return; }
+      state.view = 'chat';
+      render();
+    });
     shadow.querySelector('[data-file]').addEventListener('change', async (event) => {
       const file = event.target.files && event.target.files[0]; if (!file) return;
       try { await uploadPhoto(file); } catch (err) { state.messages.push({ role: 'assistant', text: err.message || 'Could not attach that photo.' }); render(); }
@@ -1163,12 +1296,18 @@
       loadOrders();
     }));
     shadow.querySelectorAll('[data-action="order-cancel"]').forEach((el) => el.addEventListener('click', () => cancelVerifiedOrder(el.getAttribute('data-order'))));
-    shadow.querySelectorAll('[data-action="order-return"]').forEach((el) => el.addEventListener('click', () => openReturnForm(el.getAttribute('data-order'), 'Wrong size')));
-    shadow.querySelectorAll('[data-action="order-issue"]').forEach((el) => el.addEventListener('click', () => openReturnForm(el.getAttribute('data-order'), 'Damaged item')));
+    shadow.querySelectorAll('[data-action="order-return"]').forEach((el) => el.addEventListener('click', () => openReturnForm(el.getAttribute('data-order'))));
+    shadow.querySelectorAll('[data-action="order-issue"]').forEach((el) => el.addEventListener('click', () => openReturnForm(el.getAttribute('data-order'))));
+    // Both re-render, because Send for review is disabled until an item and a
+    // reason are both chosen and its state has to follow the choice.
     shadow.querySelectorAll('[data-return-item]').forEach((el) => el.addEventListener('change', () => {
       state.returnItems[el.getAttribute('data-return-item')] = el.checked;
+      render();
     }));
-    shadow.querySelector('[data-return-reason]')?.addEventListener('change', (event) => { state.returnReason = event.target.value; });
+    shadow.querySelector('[data-return-reason]')?.addEventListener('change', (event) => {
+      state.returnReason = event.target.value;
+      render();
+    });
     shadow.querySelector('[data-action="return-submit"]')?.addEventListener('click', submitReturn);
     shadow.querySelector('[data-action="return-cancel"]')?.addEventListener('click', () => {
       state.returnFor = null; state.returnError = ''; render();
