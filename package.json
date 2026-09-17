@@ -1,0 +1,35 @@
+{
+  "name": "velour-backend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node src/server.js",
+    "setup": "node db/setup.js",
+    "migrate": "node db/migrate.js",
+    "seed": "node db/seed.js",
+    "test": "node test/boot-test.js && node test/agent-loop.test.js && node test/photo-scoring.test.js && node test/smoke-test.js && node test/brand-config.test.js && node test/offers-and-roles.test.js && node test/session-verification.test.js && node test/refunds-and-webhooks.test.js && node test/refund-concurrency.test.js && node test/webhook-transaction.test.js && node test/inventory-concurrency.test.js && node test/ai-memory.test.js && node test/ai-provider-fallback.test.js",
+    "test:offline": "node test/agent-loop.test.js && node test/photo-scoring.test.js && node test/ai-provider-fallback.test.js"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1126.0",
+    "@aws-sdk/s3-request-presigner": "^3.1126.0",
+    "bcryptjs": "^2.4.3",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.6",
+    "dotenv": "^16.6.1",
+    "express": "^5.2.1",
+    "express-rate-limit": "^7.5.1",
+    "helmet": "^7.2.0",
+    "jsonwebtoken": "^9.0.3",
+    "multer": "^2.3.0",
+    "openai": "^4.104.0",
+    "pg": "^8.23.0",
+    "razorpay": "^2.9.8",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "supertest": "^7.2.2"
+  }
+}

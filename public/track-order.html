@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title data-brand-title-suffix="{brand}: Track Your Order">Store: Track Your Order</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,wght@0,500;1,500;1,600&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/main.css">
+<script>window.API_BASE = '';</script>
+</head>
+<body>
+
+<nav class="site-nav">
+  <div class="container">
+    <a href="index.html" class="brand-logo" data-brand-name><span class="accent-letter">V</span><span class="rest-letters">ELOUR</span></a>
+    <div class="nav-links"><a href="index.html">Shop</a></div>
+    <div class="nav-actions">
+      <a href="track-order.html" class="track-link">Track order</a>
+      <a href="cart.html" class="icon-btn" title="Cart">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6"/></svg>
+        <span class="badge" data-nav-cart-badge hidden>0</span>
+      </a>
+    </div>
+  </div>
+</nav>
+
+<header class="page-header">
+  <div class="container">
+    <h1>Track your order</h1>
+    <p>Enter the email and order ID from your confirmation.</p>
+  </div>
+</header>
+
+<section class="page-body">
+  <div class="container">
+    <div class="lookup-card">
+      <form data-track-form novalidate>
+        <div class="form-field">
+          <label for="track-email">Email</label>
+          <input type="email" id="track-email" name="email" placeholder="you@email.com">
+        </div>
+        <div class="form-field">
+          <label for="track-orderid">Order ID</label>
+          <input type="text" id="track-orderid" name="orderId" placeholder="VEL-XXXXXX">
+        </div>
+        <button type="submit" class="btn-primary" style="justify-content:center; width:100%;">Track order</button>
+      </form>
+      <div class="notice error" data-track-notfound hidden></div>
+    </div>
+
+    <div class="result-card" data-track-result hidden>
+      <h3>Order <span data-order-id-out></span></h3>
+      <div class="status-track" data-status-track></div>
+      <div data-order-items-out></div>
+      <button type="button" class="btn-secondary" data-return-toggle style="margin-top:18px;">Report an issue with this order</button>
+
+      <div data-return-panel hidden style="margin-top:20px; padding-top:20px; border-top:1px solid var(--border);">
+        <h3>Return, refund, or damaged item</h3>
+        <form data-return-form novalidate>
+          <div class="form-field">
+            <label>Which items are you returning</label>
+            <div data-return-item-picker></div>
+          </div>
+          <div class="form-field">
+            <label for="return-reason">What happened</label>
+            <select id="return-reason" name="reason">
+              <option value="">Choose a reason</option>
+              <option value="Wrong size">Wrong size</option>
+              <option value="Damaged item">Damaged item</option>
+              <option value="Not as described">Not as described</option>
+              <option value="Changed my mind">Changed my mind</option>
+            </select>
+          </div>
+          <div class="form-field">
+            <label for="return-desc">Tell us more</label>
+            <textarea id="return-desc" name="description" rows="3" placeholder="Optional details"></textarea>
+          </div>
+          <div class="form-field">
+            <label>Upload a photo</label>
+            <div class="upload-drop" data-upload-drop><span class="upload-icon" aria-hidden="true">&#128247;</span><strong>Upload item photo</strong><span class="upload-help">JPEG, PNG or WEBP · up to 8MB</span></div>
+            <input type="file" accept="image/*" hidden data-upload-input>
+          </div>
+          <button type="submit" class="btn-primary" style="justify-content:center; width:100%;">Submit request</button>
+        </form>
+        <div class="notice success" data-return-confirm hidden>Request <strong data-return-id-out></strong> submitted. Our team will email you within 24 hours with next steps.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script src="js/api.js"></script>
+<script src="js/brand.js"></script>
+<script src="js/app.js"></script>
+<script src="js/widget.js"></script>
+</body>
+</html>

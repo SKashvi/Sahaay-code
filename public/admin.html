@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title data-brand-title-suffix="{brand}: Admin">Store: Admin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,wght@0,500;1,500;1,600&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/main.css">
+<script>window.API_BASE = '';</script>
+</head>
+<body>
+
+<nav class="site-nav">
+  <div class="container">
+    <a href="index.html" class="brand-logo" data-brand-name><span class="accent-letter">V</span><span class="rest-letters">ELOUR</span></a>
+    <div class="nav-links"><a href="index.html">Storefront</a></div>
+    <div class="nav-actions">
+      <button type="button" class="track-link" data-admin-logout hidden>Sign out</button>
+    </div>
+  </div>
+</nav>
+
+<div class="admin-login-card" data-admin-login>
+  <h2 style="margin-top:0;">Admin sign in</h2>
+  <form data-admin-login-form novalidate>
+    <div class="form-field">
+      <label for="admin-email">Email</label>
+      <input type="email" id="admin-email" name="email" placeholder="you@store.com">
+    </div>
+    <div class="form-field">
+      <label for="admin-password">Password</label>
+      <input type="password" id="admin-password" name="password">
+    </div>
+    <div class="notice error" data-admin-login-error hidden></div>
+    <button type="submit" class="btn-primary" style="justify-content:center; width:100%;">Sign in</button>
+  </form>
+</div>
+
+<div class="admin-shell" data-admin-shell hidden>
+  <h1 style="font-family:var(--font-display); font-style:italic; font-weight:500;">Admin dashboard</h1>
+
+  <div class="admin-tabs">
+    <button type="button" class="admin-tab active" data-tab="orders">Orders</button>
+    <button type="button" class="admin-tab" data-tab="returns">Returns</button>
+    <button type="button" class="admin-tab" data-tab="products">Products</button>
+    <button type="button" class="admin-tab" data-tab="inventory">Inventory</button>
+    <button type="button" class="admin-tab" data-tab="kb">Knowledge base</button>
+    <button type="button" class="admin-tab" data-tab="widget">Widget</button>
+    <button type="button" class="admin-tab" data-tab="brand">Branding</button>
+    <button type="button" class="admin-tab" data-tab="offers">Offers</button>
+    <button type="button" class="admin-tab" data-tab="requests">Requests</button>
+    <button type="button" class="admin-tab" data-tab="bundles">Bundles</button>
+    <button type="button" class="admin-tab" data-tab="conversations">Conversations</button>
+    <button type="button" class="admin-tab" data-operator-only hidden data-tab="team">Team</button>
+    <button type="button" class="admin-tab" data-operator-only hidden data-tab="diagnostics">Diagnostics</button>
+  </div>
+
+  <div class="admin-panel active" data-panel="orders">
+    <table class="admin-table">
+      <thead><tr><th>Order</th><th>Customer</th><th>Total</th><th>Placed</th><th>Status</th></tr></thead>
+      <tbody data-orders-body></tbody>
+    </table>
+  </div>
+
+  <div class="admin-panel" data-panel="returns">
+    <table class="admin-table">
+      <thead><tr><th>Return</th><th>Order</th><th>Reason</th><th>Notes</th><th>Photo</th><th>Status</th><th>Refund</th></tr></thead>
+      <tbody data-returns-body></tbody>
+    </table>
+  </div>
+
+  <div class="admin-panel" data-panel="products">
+    <div class="admin-toolbar"><strong>Catalog</strong></div>
+    <form class="admin-form-inline" data-product-form>
+      <div class="form-field"><label>Slug</label><input name="slug" placeholder="classic-tee" required></div>
+      <div class="form-field"><label>Name</label><input name="name" placeholder="Classic Tee" required></div>
+      <div class="form-field"><label>Price (paise)</label><input name="price" type="number" min="0" placeholder="79900" required></div>
+      <div class="form-field"><label>Fabric</label><input name="fabric" placeholder="100% cotton"></div>
+      <div class="form-field"><label>Icon</label>
+        <select name="iconKey"><option>tee</option><option>hoodie</option><option>jeans</option><option>dress</option><option>jacket</option><option>joggers</option></select>
+      </div>
+      <div class="form-field"><label>Sizes (comma separated)</label><input name="sizes" placeholder="S,M,L,XL" required></div>
+      <div class="form-field"><label>Image URL</label><input name="imageUrl" type="url" placeholder="https://cdn.example.com/product.jpg"></div>
+      <div class="form-field"><label>Or upload image</label><input name="imageFile" type="file" accept="image/jpeg,image/png,image/webp"></div>
+      <div class="form-field full-row"><label>Colors (name:hex, comma separated)</label><input name="colors" placeholder="Black:#1B1330, White:#FFFFFF" required></div>
+      <div class="full-row"><button type="submit" class="btn-primary" data-product-submit>Add product</button> <button type="button" class="small-link" data-product-cancel hidden>Cancel edit</button></div>
+      <div class="notice error full-row" data-product-form-error hidden></div>
+    </form>
+    <table class="admin-table">
+      <thead><tr><th>Name</th><th>Price</th><th>Sizes</th><th>Active</th><th></th></tr></thead>
+      <tbody data-products-body></tbody>
+    </table>
+  </div>
+
+  <div class="admin-panel" data-panel="inventory">
+    <div class="admin-toolbar"><strong>Stock by variant</strong></div>
+    <table class="admin-table">
+      <thead><tr><th>Product</th><th>SKU</th><th>Size</th><th>Color</th><th>Stock</th><th>Active</th></tr></thead>
+      <tbody data-inventory-body></tbody>
+    </table>
+  </div>
+
+  <div class="admin-panel" data-panel="widget">
+    <div class="admin-toolbar"><strong>Customer chat settings</strong></div>
+    <form class="admin-form-inline" data-widget-form>
+      <div class="form-field full-row"><label>Welcome message</label><input name="welcomeMessage" placeholder="Hi! How can I help you today?" required></div>
+      <div class="form-field full-row"><label>Suggested questions</label><textarea name="suggestedQuestions" rows="6" placeholder="One question per line" required></textarea></div>
+      <div class="full-row"><button type="submit" class="btn-primary">Save widget settings</button></div>
+      <div class="notice error full-row" data-widget-form-error hidden></div>
+      <div class="notice full-row" data-widget-form-success hidden>Widget settings saved.</div>
+    </form>
+    <div class="panel-note">These questions appear in the standalone customer chat. Changes take effect without editing the widget code.</div>
+  </div>
+
+  <div class="admin-panel" data-panel="kb">
+    <div class="admin-toolbar"><strong>Knowledge base</strong></div>
+    <form class="admin-form-inline" data-kb-form>
+      <div class="form-field"><label>Topic</label><input name="topic" placeholder="Shipping" required></div>
+      <div class="form-field full-row"><label>Content</label><input name="content" placeholder="What the assistant should say" required></div>
+      <div class="full-row"><button type="submit" class="btn-primary">Add entry</button></div>
+    </form>
+    <table class="admin-table">
+      <thead><tr><th>Topic</th><th>Content</th><th></th></tr></thead>
+      <tbody data-kb-body></tbody>
+    </table>
+  </div>
+
+  <div class="admin-panel" data-panel="brand">
+    <div class="admin-toolbar"><strong>Branding</strong></div>
+    <form class="admin-form-inline" data-brand-form>
+      <div class="form-field full-row"><label>Logo</label><input name="logoUrl" placeholder="https://..." data-brand-logo-url><input type="file" accept="image/jpeg,image/png,image/webp" data-brand-logo-file><div class="panel-note">Upload a file or paste an https URL. Only http and https addresses are accepted.</div></div>
+      <div class="form-field"><label>Logo for dark headers</label><input name="logoDarkUrl" placeholder="https://..."></div>
+      <div class="form-field"><label>Logo height (px)</label><input name="logoHeight" type="number" min="24" max="160"></div>
+      <div class="form-field"><label>Accent</label><input name="accent" type="color"></div>
+      <div class="form-field"><label>Secondary</label><input name="secondary" type="color"></div>
+      <div class="form-field"><label>Background</label><input name="background" type="color"></div>
+      <div class="form-field"><label>Surface</label><input name="surface" type="color"></div>
+      <div class="form-field"><label>Text</label><input name="textColor" type="color"></div>
+      <div class="form-field"><label>Muted text</label><input name="mutedColor" type="color"></div>
+      <div class="form-field"><label>Corner radius (px)</label><input name="borderRadius" type="number" min="0" max="40"></div>
+      <div class="form-field full-row"><label>Font family</label><input name="fontFamily" placeholder="Inter, sans-serif"></div>
+      <div class="form-field"><label>Bubble icon</label><select name="bubbleIcon"><option value="chat">Chat</option><option value="cart">Cart</option></select></div>
+      <div class="form-field"><label>Widget position</label><select name="widgetPosition"><option value="bottom-right">Bottom right</option><option value="bottom-left">Bottom left</option></select></div>
+      <div class="form-field"><label>Show cart button</label><select name="showCart"><option value="true">Yes</option><option value="false">No</option></select></div>
+      <div class="form-field"><label>Show track orders</label><select name="showTrackOrders"><option value="true">Yes</option><option value="false">No</option></select></div>
+      <div class="full-row"><button type="submit" class="btn-primary">Save branding</button></div>
+      <div class="notice error full-row" data-brand-form-error hidden></div>
+      <div class="notice full-row" data-brand-form-success hidden>Branding saved. Reload the storefront to see it.</div>
+    </form>
+    <div class="panel-note">These values drive the chat widget and the storefront. Anything left blank falls back to the deployment's environment defaults.</div>
+  </div>
+
+  <div class="admin-panel" data-panel="offers">
+    <div class="admin-toolbar"><strong>Offers</strong></div>
+    <form class="admin-form-inline" data-offer-form>
+      <div class="form-field"><label>Title</label><input name="title" placeholder="Festive 10" required></div>
+      <div class="form-field"><label>Code</label><input name="code" placeholder="FEST10"></div>
+      <div class="form-field"><label>Type</label><select name="kind"><option value="PERCENT">Percent off</option><option value="FLAT">Flat amount off</option><option value="FREE_SHIPPING">Free shipping</option><option value="BUNDLE">Bundle</option></select></div>
+      <div class="form-field"><label>Value</label><input name="value" type="number" min="0" value="0" required><div class="panel-note">Percent: 1 to 100. Flat: rupees. Otherwise 0.</div></div>
+      <div class="form-field"><label>Minimum spend (rupees)</label><input name="minSubtotal" type="number" min="0" value="0"></div>
+      <div class="form-field"><label>Starts</label><input name="startsAt" type="datetime-local"></div>
+      <div class="form-field"><label>Ends</label><input name="endsAt" type="datetime-local"></div>
+      <div class="form-field full-row"><label>Description</label><input name="description" placeholder="What the customer gets"></div>
+      <div class="full-row"><button type="submit" class="btn-primary">Add offer</button></div>
+      <div class="notice error full-row" data-offer-form-error hidden></div>
+    </form>
+    <table class="admin-table">
+      <thead><tr><th>Offer</th><th>Type</th><th>Value</th><th>Min spend</th><th>Window</th><th>Active</th><th></th></tr></thead>
+      <tbody data-offers-body></tbody>
+    </table>
+    <div class="panel-note">The assistant can read and mention active offers. It cannot apply a discount or change what checkout charges.</div>
+  </div>
+
+  <div class="admin-panel" data-panel="requests">
+    <div class="admin-toolbar"><strong>Requests from the assistant</strong>
+      <select data-requests-status><option value="PENDING">Pending</option><option value="APPROVED">Approved</option><option value="REJECTED">Rejected</option></select>
+    </div>
+    <div data-requests-body></div>
+    <div class="panel-note">The assistant can only ever create a request. Approving a return here creates it in approved status but does not send money: the refund is still a separate click on the Returns tab.</div>
+  </div>
+
+  <div class="admin-panel" data-panel="bundles">
+    <div class="admin-toolbar"><strong>Bundles</strong></div>
+    <form class="admin-form-inline" data-bundle-form>
+      <div class="form-field"><label>Title</label><input name="title" placeholder="Summer set" required></div>
+      <div class="form-field full-row"><label>Description</label><input name="description" placeholder="What makes these go together"></div>
+      <div class="form-field full-row"><label>Products</label><select name="productIds" multiple size="6" data-bundle-products></select><div class="panel-note">Pick at least two. Any product in a bundle suggests the others.</div></div>
+      <div class="full-row"><button type="submit" class="btn-primary">Create bundle</button></div>
+      <div class="notice error full-row" data-bundle-form-error hidden></div>
+    </form>
+    <table class="admin-table">
+      <thead><tr><th>Bundle</th><th>Products</th><th>Active</th><th></th></tr></thead>
+      <tbody data-bundles-body></tbody>
+    </table>
+    <div class="panel-note">Without a bundle the assistant falls back to suggesting other in-stock products, and says so rather than presenting a guess as a matched set.</div>
+  </div>
+
+  <div class="admin-panel" data-panel="conversations">
+    <div class="admin-toolbar"><strong>Conversations</strong><button class="btn-ghost" data-refresh-conversations>Refresh</button></div>
+    <div class="admin-split">
+      <table class="admin-table">
+        <thead><tr><th>Session</th><th>Customer</th><th>Messages</th><th>Last activity</th></tr></thead>
+        <tbody data-conversations-body></tbody>
+      </table>
+      <div data-conversation-detail><div class="panel-note">Pick a conversation to read the transcript.</div></div>
+    </div>
+  </div>
+
+  <div class="admin-panel" data-panel="team">
+    <div class="admin-toolbar"><strong>Team</strong></div>
+    <form class="admin-form-inline" data-user-form>
+      <div class="form-field"><label>Name</label><input name="name" required></div>
+      <div class="form-field"><label>Email</label><input name="email" type="email" required></div>
+      <div class="form-field"><label>Password</label><input name="password" type="password" minlength="10" required></div>
+      <div class="form-field"><label>Role</label><select name="role"><option value="client">Client (store owner)</option><option value="operator">Operator (agency)</option></select></div>
+      <div class="full-row"><button type="submit" class="btn-primary">Create account</button></div>
+      <div class="notice error full-row" data-user-form-error hidden></div>
+    </form>
+    <table class="admin-table">
+      <thead><tr><th>Name</th><th>Email</th><th>Role</th><th></th></tr></thead>
+      <tbody data-users-body></tbody>
+    </table>
+    <div class="panel-note">A client account runs the shop. Diagnostics and this page stay with the operator.</div>
+  </div>
+
+  <div class="admin-panel" data-panel="diagnostics">
+    <div class="admin-toolbar"><strong>Diagnostics</strong>
+      <select data-errors-source><option value="">All sources</option><option value="ai">Assistant</option><option value="vision">Photo scoring</option><option value="http">Server</option></select>
+      <button class="btn-ghost" data-refresh-errors>Refresh</button>
+    </div>
+    <table class="admin-table">
+      <thead><tr><th>When</th><th>Source</th><th>Message</th><th>Context</th></tr></thead>
+      <tbody data-errors-body></tbody>
+    </table>
+    <div class="panel-note">Server faults and assistant failures from the last 30 days. Request bodies are never recorded.</div>
+  </div>
+</div>
+
+<script src="js/api.js"></script>
+<script src="js/brand.js"></script>
+<script src="js/admin.js"></script>
+</body>
+</html>

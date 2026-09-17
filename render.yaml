@@ -1,0 +1,7 @@
+services:
+  - type: web
+    name: velour-backend
+    runtime: node
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /healthz

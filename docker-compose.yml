@@ -1,0 +1,36 @@
+version: "3.8"
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    # Local dev only. Do not deploy this file's database credentials to production, use a managed Postgres instance with its own strong credentials instead.
+    environment:
+      POSTGRES_USER: velour
+      POSTGRES_PASSWORD: velour
+      POSTGRES_DB: velour
+    ports:
+      - "5432:5432"
+    volumes:
+      - velour_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U velour"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://velour:velour@db:5432/velour
+    ports:
+      - "4000:4000"
+
+volumes:
+  velour_pgdata:

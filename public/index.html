@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title data-brand-title-suffix="{brand}: Shop">Store: Shop</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,wght@0,500;1,500;1,600&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/main.css">
+<script>window.API_BASE = '';</script>
+</head>
+<body>
+
+<nav class="site-nav">
+  <div class="container">
+    <a href="index.html" class="brand-logo" data-brand-name><span class="accent-letter">V</span><span class="rest-letters">ELOUR</span></a>
+    <div class="nav-links"><a href="index.html">Shop</a></div>
+    <div class="nav-actions">
+      <a href="track-order.html" class="track-link">Track order</a>
+      <a href="cart.html" class="icon-btn" title="Cart">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6"/></svg>
+        <span class="badge" data-nav-cart-badge hidden>0</span>
+      </a>
+    </div>
+  </div>
+</nav>
+
+<section class="hero">
+  <div class="container">
+    <p class="eyebrow">New season edit</p>
+    <h1>Clothes built around <em>how you actually</em> move through a day.</h1>
+    <p data-brand-tagline>Six staples, cut for comfort first, restocked often.</p>
+    <a href="#shop" class="btn-primary">Shop the edit</a>
+  </div>
+</section>
+
+<section class="shop-section" id="shop">
+  <div class="container">
+    <h2>The edit</h2>
+    <p class="section-sub">Restocked as pieces sell out.</p>
+    <div class="product-grid" data-product-grid></div>
+  </div>
+</section>
+
+<footer class="site-footer">
+  <div class="container" style="display:flex; justify-content:space-between; width:100%;">
+    <span class="brand-logo" data-brand-name><span class="accent-letter">V</span><span class="rest-letters">ELOUR</span></span>
+    <span>Need help? Open the chat in the corner.</span>
+  </div>
+</footer>
+
+<script src="js/api.js"></script>
+<script src="js/brand.js"></script>
+<script src="js/app.js"></script>
+<script src="js/widget.js"></script>
+</body>
+</html>
