@@ -27,7 +27,7 @@ const { scoreInBackground } = require('./photoScoring');
 
 const NEEDS_VERIFICATION = {
   error: 'not_verified',
-  message: 'This needs a verified customer. Ask for the email used at checkout and the order ID, then call request_verification.',
+  message: 'This needs a verified customer. Ask for the email used at checkout, then call request_verification. Do not ask for an order ID: verification is on the email alone.',
 };
 
 /* ------------------------------------------------------------------ */
@@ -83,14 +83,14 @@ const definitions = [
   {
     name: 'request_verification',
     description:
-      'Send a six digit code to the email on an order. Call this before any order specific help when the customer is not verified yet. You need both the email used at checkout and the order ID. The customer types the code into the widget, not into the chat, so never ask them for the code and never call this with a code.',
+      'Send a six digit code to the email used at checkout. Call this before any order specific help when the customer is not verified yet. You need the email and nothing else: an order ID is not a credential and must never be asked for. Verifying shows every order on that email. The customer types the code into the widget, not into the chat, so never ask them for the code and never call this with a code.',
     parameters: {
       type: 'object',
       properties: {
         email: { type: 'string', description: 'Email the customer used at checkout.' },
-        orderId: { type: 'string', description: 'Order ID, e.g. VEL-4F92A1C8.' },
+        orderId: { type: 'string', description: 'Optional. Only if the customer volunteered one, as a hint about which order they mean. Never ask for it.' },
       },
-      required: ['email', 'orderId'],
+      required: ['email'],
     },
   },
   {
@@ -357,8 +357,8 @@ async function suggestAddOns(args) {
 async function requestVerification(args, ctx) {
   const email = String(args.email || '').trim();
   const orderId = String(args.orderId || '').trim();
-  if (!email || !orderId) {
-    return { result: { error: 'missing_details', message: 'Ask for both the checkout email and the order ID.' }, blocks: [] };
+  if (!email) {
+    return { result: { error: 'missing_details', message: 'Ask for the email used at checkout. Do not ask for an order ID.' }, blocks: [] };
   }
 
   await requestCode({ sessionId: ctx.sessionId, email, displayId: orderId });
@@ -369,7 +369,7 @@ async function requestVerification(args, ctx) {
   return {
     result: {
       sent: true,
-      message: 'If those details match an order, a six digit code is on its way to that email. Tell the customer to enter it in the box shown, not in the chat.',
+      message: 'If that email has any orders, a six digit code is on its way to it. Tell the customer to enter it in the box shown, not in the chat. Once verified they will see every order on that email.',
     },
     blocks: [{ type: 'verify', email, orderDisplayId: orderId }],
   };

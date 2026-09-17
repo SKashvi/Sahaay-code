@@ -702,7 +702,7 @@
       '<td>' + (o.minSubtotal ? formatPaise(o.minSubtotal) : '-') + '</td>' +
       '<td>' + escapeHtml(offerWindow(o)) + '</td>' +
       '<td><input type="checkbox" data-offer-active="' + o.id + '"' + (o.active ? ' checked' : '') + '></td>' +
-      '<td><button class="btn-ghost" data-delete-offer="' + o.id + '">Delete</button></td></tr>'
+      '<td><button type="button" class="btn-ghost" data-delete-offer="' + o.id + '">Delete</button></td></tr>'
     )).join('') || '<tr><td colspan="7">No offers yet.</td></tr>';
 
     body.querySelectorAll('[data-offer-active]').forEach((cb) => {
@@ -812,8 +812,8 @@
         (a.agentReasoning ? '<div class="transcript-meta">Assistant note: ' + escapeHtml(a.agentReasoning) + '</div>' : '') +
         (photo ? '<img class="request-photo" src="' + escapeHtml(photo) + '" alt="Return photo">' : '') +
         (a.status === 'PENDING'
-          ? '<div class="request-actions"><button class="btn-primary" data-approve-request="' + a.id + '">Approve</button>' +
-            '<button class="btn-ghost" data-reject-request="' + a.id + '">Reject</button></div>'
+          ? '<div class="request-actions"><button type="button" class="btn-primary" data-approve-request="' + a.id + '">Approve</button>' +
+            '<button type="button" class="btn-ghost" data-reject-request="' + a.id + '">Reject</button></div>'
           : '<div class="transcript-meta">' + escapeHtml(a.status) + (a.reviewNote ? ' &middot; ' + escapeHtml(a.reviewNote) : '') +
             (a.resultRef ? ' &middot; ' + escapeHtml(a.resultRef) : '') + '</div>') +
         '</div>';
@@ -871,7 +871,7 @@
       '<tr><td>' + escapeHtml(b.title) + (b.description ? '<br><span style="color:var(--muted)">' + escapeHtml(b.description) + '</span>' : '') + '</td>' +
       '<td>' + (b.productIds || []).map((id) => escapeHtml(nameById.get(id) || 'removed product')).join('<br>') + '</td>' +
       '<td><input type="checkbox" data-bundle-active="' + b.id + '"' + (b.active ? ' checked' : '') + '></td>' +
-      '<td><button class="btn-ghost" data-delete-bundle="' + b.id + '">Delete</button></td></tr>'
+      '<td><button type="button" class="btn-ghost" data-delete-bundle="' + b.id + '">Delete</button></td></tr>'
     )).join('') || '<tr><td colspan="4">No bundles yet.</td></tr>';
 
     body.querySelectorAll('[data-bundle-active]').forEach((cb) => {
@@ -929,7 +929,7 @@
     if (!body) return;
     const data = await adminFetch('/conversations');
     body.innerHTML = (data.conversations || []).map((c) => (
-      '<tr><td><button class="btn-ghost" data-open-conversation="' + escapeHtml(c.sessionId) + '">' +
+      '<tr><td><button type="button" class="btn-ghost" data-open-conversation="' + escapeHtml(c.sessionId) + '">' +
       escapeHtml(c.sessionId.slice(0, 12)) + '</button></td>' +
       '<td>' + escapeHtml(c.verifiedEmail || 'not verified') +
       (c.orderDisplayId ? '<br><span style="color:var(--muted)">' + escapeHtml(c.orderDisplayId) + '</span>' : '') + '</td>' +
@@ -974,7 +974,7 @@
     const data = await adminFetch('/users');
     body.innerHTML = (data.users || []).map((u) => (
       '<tr><td>' + escapeHtml(u.name) + '</td><td>' + escapeHtml(u.email) + '</td><td>' + escapeHtml(u.role) + '</td>' +
-      '<td><button class="btn-ghost" data-delete-user="' + u.id + '">Remove</button></td></tr>'
+      '<td><button type="button" class="btn-ghost" data-delete-user="' + u.id + '">Remove</button></td></tr>'
     )).join('');
     body.querySelectorAll('[data-delete-user]').forEach((btn) => {
       btn.addEventListener('click', async () => {

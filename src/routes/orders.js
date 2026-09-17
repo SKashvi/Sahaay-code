@@ -4,13 +4,13 @@ const db = require('../lib/db');
 const { newId, newDisplayId } = require('../lib/ids');
 const { createRazorpayOrder, verifyPaymentSignature } = require('../lib/razorpay');
 const { validateBody } = require('../middleware/validate');
-const { checkoutSchema, verifyPaymentSchema, trackOrderSchema, quoteSchema, cancelOrderSchema, sessionStateSchema } = require('../schemas');
+const { checkoutSchema, verifyPaymentSchema, trackOrderSchema, quoteSchema, cancelOrderSchema, sessionOrdersSchema } = require('../schemas');
 const { trackOrderLimiter, checkoutLimiter, offerQuoteLimiter } = require('../middleware/rateLimiters');
 const { notifyOrderConfirmed } = require('../lib/notifications');
 const { RESERVATION_MINUTES, finalizeReservation, releaseReservation } = require('../lib/inventoryReservations');
 const { findUsableOffer, applyOffer, computeRefundRatio, normalizeOfferCode } = require('../lib/offers');
 const { cancelOrder, isCancellable } = require('../lib/cancellation');
-const { buildOrderView } = require('../lib/orderView');
+const { buildOrderView, buildOrderViewForEmail, listOrdersForEmail } = require('../lib/orderView');
 const { customerForSession } = require('../middleware/customerAuth');
 
 const router = express.Router();
@@ -418,15 +418,25 @@ router.post('/cancel', trackOrderLimiter, validateBody(cancelOrderSchema), async
  * is one indexed read for a customer who has already proved an email round
  * trip, and throttling it would reintroduce the dead end this removes.
  */
-router.post('/mine', validateBody(sessionStateSchema), async (req, res, next) => {
+router.post('/mine', validateBody(sessionOrdersSchema), async (req, res, next) => {
   try {
     const customer = customerForSession(req, req.body.sessionId);
     if (!customer) return res.status(401).json({ error: 'not_verified' });
 
-    const order = await buildOrderView(customer.orderId);
-    // A session is verified against exactly one order, but the panel is built
-    // to render a list so this stays true if that ever changes.
-    res.json({ orders: order ? [order] : [], email: customer.email });
+    // Every order on the verified email, not just the one a code happened to
+    // be requested against. Signing in is on the email; the order id is a
+    // filter over the list, never a second credential.
+    const orders = await listOrdersForEmail(customer.email, { search: req.body.search });
+
+    // When the panel asks for one order, it gets the full view. Scoped to the
+    // verified email, so a display id from elsewhere resolves to nothing.
+    let detail = null;
+    if (req.body.displayId) {
+      detail = await buildOrderViewForEmail(customer.email, req.body.displayId);
+      if (!detail) return res.status(404).json({ error: 'not_found' });
+    }
+
+    res.json({ orders, detail, email: customer.email });
   } catch (err) {
     next(err);
   }
@@ -435,12 +445,30 @@ router.post('/mine', validateBody(sessionStateSchema), async (req, res, next) =>
 /* The panel's Cancel button. Same identity check as /mine, and the same
  * cancelOrder as the tracking page and the agent tool, so the rules about
  * what can be cancelled and what a paid order owes live in one place. */
-router.post('/mine/cancel', validateBody(sessionStateSchema), async (req, res, next) => {
+router.post('/mine/cancel', validateBody(sessionOrdersSchema), async (req, res, next) => {
   try {
     const customer = customerForSession(req, req.body.sessionId);
     if (!customer) return res.status(401).json({ error: 'not_verified' });
 
-    const outcome = await cancelOrder(customer.orderId);
+    // Which order, resolved against the verified email rather than taken on
+    // trust. Falls back to the one the session was verified against, for a
+    // caller that names none.
+    const target = req.body.displayId
+      ? await buildOrderViewForEmail(customer.email, req.body.displayId)
+      : null;
+    if (req.body.displayId && !target) return res.status(404).json({ error: 'not_found' });
+
+    let orderId = customer.orderId;
+    if (target) {
+      const row = await db.query(
+        'SELECT id FROM orders WHERE display_id = $1 AND lower(customer_email) = lower($2)',
+        [target.displayId, customer.email]
+      );
+      orderId = row.rows[0].id;
+    }
+    if (!orderId) return res.status(404).json({ error: 'not_found' });
+
+    const outcome = await cancelOrder(orderId);
     res.json({
       ok: true,
       displayId: outcome.order.display_id,

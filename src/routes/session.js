@@ -29,8 +29,10 @@ const COOKIE_OPTS = {
 
 router.post('/request-code', verificationLimiter, validateBody(requestCodeSchema), async (req, res, next) => {
   try {
+    // displayId is optional and is only a hint about where to land. Signing
+    // in is on the email, which is where the code goes.
     const { sessionId, email, displayId } = req.body;
-    await requestCode({ sessionId, email, displayId });
+    await requestCode({ sessionId, email, displayId: displayId || null });
     // Always the same response. Anything conditional here turns this into a
     // free tool for checking whether an email placed a given order.
     res.json({

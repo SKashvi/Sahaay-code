@@ -203,6 +203,70 @@ function testCartChangeEventFires() {
   console.log('  ok  velour:cart-change fires on the localStorage path as well');
 }
 
+/* 2B: the badge is driven by an event, and every mutation emits it.
+ *
+ * window.Cart exists now, but nothing re-rendered when it changed, so the
+ * count sat at whatever it was when the header was last drawn. There is no
+ * server-side cart in this build: api.js keeps it in localStorage and the
+ * widget's adapter is the fallback for a page that never loads api.js, so
+ * those two are the only write paths there are. */
+function testEveryMutationEmitsCartChange() {
+  const dom = makePage();
+  loadApiJs(dom);
+  const widget = loadWidgetCart(dom);
+
+  const seen = [];
+  dom.window.document.addEventListener('cart:change', (e) => seen.push(e.detail && e.detail.count));
+
+  // From a product card quick-add in the widget.
+  widget.cartStore.add(PRODUCT, 'M', 'Indigo', 1);
+  assert.strictEqual(seen.length, 1, 'an add from the widget emits');
+  assert.strictEqual(seen[0], 1, 'and carries the count, so a badge needs no second read');
+
+  // From the storefront.
+  dom.window.Cart.add({ id: 'p-2', name: 'Dupatta', price: 49900 }, 'Free', 'Rust', 2);
+  assert.strictEqual(seen.length, 2, 'an add from the storefront emits');
+  assert.strictEqual(seen[1], 3, 'the count is quantities, not lines');
+
+  // Quantity updates and removals, which are storefront-only operations.
+  dom.window.Cart.updateQty(0, 1);
+  assert.strictEqual(seen[seen.length - 1], 4, 'a quantity change emits the new count');
+  dom.window.Cart.remove(0);
+  assert.strictEqual(seen[seen.length - 1], 2, 'a removal emits too');
+  dom.window.Cart.clear();
+  assert.strictEqual(seen[seen.length - 1], 0, 'and clearing emits zero');
+
+  // The old event name still fires, so nothing that listened for it breaks.
+  const legacy = [];
+  dom.window.document.addEventListener('velour:cart-change', () => legacy.push(1));
+  widget.cartStore.add(PRODUCT, 'S', 'Black', 1);
+  assert.strictEqual(legacy.length, 1, 'velour:cart-change still fires alongside cart:change');
+  console.log('  ok  every add, quantity change, removal and clear emits cart:change with the count');
+}
+
+/* A page navigation does not carry the widget's DOM, but the cart lives in
+ * localStorage and the chat log in sessionStorage, so the count on the next
+ * page has to come back from storage rather than from memory. */
+function testCountSurvivesAPageNavigation() {
+  const first = makePage();
+  loadApiJs(first);
+  const widgetA = loadWidgetCart(first);
+  widgetA.cartStore.add(PRODUCT, 'M', 'Indigo', 2);
+  const stored = first.window.localStorage.getItem(CART_KEY);
+  assert.ok(stored, 'the cart is in localStorage, not in the widget');
+
+  // A fresh document, as a navigation gives you, with the same origin storage.
+  const second = makePage();
+  second.window.localStorage.setItem(CART_KEY, stored);
+  loadApiJs(second);
+  const widgetB = loadWidgetCart(second);
+
+  assert.strictEqual(second.window.Cart.count(), 2, 'the storefront reads the count back');
+  const lines = widgetB.cartLines();
+  assert.strictEqual(lines.reduce((sum, l) => sum + l.qty, 0), 2, 'and so does the widget');
+  console.log('  ok  the count comes back from storage after a page navigation');
+}
+
 function main() {
   console.log('widget cart bridge');
   testApiJsExportsTheCart();
@@ -212,6 +276,8 @@ function main() {
   testSahaayCartBridgeWins();
   testBridgeIsResolvedPerCallNotAtLoad();
   testCartChangeEventFires();
+  testEveryMutationEmitsCartChange();
+  testCountSurvivesAPageNavigation();
   console.log('\nAll widget cart bridge tests passed.');
 }
 

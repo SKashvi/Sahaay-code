@@ -86,9 +86,21 @@ const CART_KEY = 'velour_cart';
 function readCart() {
   try { return JSON.parse(localStorage.getItem(CART_KEY) || '[]'); } catch (e) { return []; }
 }
+/* The one write path. add, updateQty, remove and clear all go through it, so
+ * there is no mutation that can skip the notification.
+ *
+ * Two event names, deliberately: velour:cart-change is what this codebase
+ * already listens for in app.js and the widget, and cart:change is the name
+ * the embed contract documents for a host page. Emitting both means neither a
+ * host integration nor the existing listeners have to change. The detail
+ * carries the count so a badge can render without re-reading storage.
+ */
 function writeCart(cart) {
   localStorage.setItem(CART_KEY, JSON.stringify(cart));
-  document.dispatchEvent(new CustomEvent('velour:cart-change'));
+  const count = cart.reduce((sum, line) => sum + (Number(line.qty) || 0), 0);
+  ['velour:cart-change', 'cart:change'].forEach((name) => {
+    document.dispatchEvent(new CustomEvent(name, { detail: { count, lines: cart } }));
+  });
 }
 
 const Cart = {

@@ -76,6 +76,10 @@
      * a chat message and not a model output: the panel is the primary path for
      * anything about an order, and the chat input is for open questions. */
     orders: null,
+    // Which order the list is drilled into, or null for the list itself.
+    orderDetail: null,
+    orderDetailView: null,
+    orderSearch: '',
     verifiedEmail: '',
     ordersLoading: false,
     ordersError: '',
@@ -799,29 +803,53 @@
 
   function renderOrders() {
     if (!state.verified) {
-      return `<section class="vw-card"><div class="vw-card-title">Your orders</div><div class="vw-empty">Verify your email to see an order.</div><div class="vw-actions"><button type="button" class="vw-btn" data-action="track">Verify</button></div></section>`;
+      return `<section class="vw-card"><div class="vw-card-title">Your orders</div><div class="vw-empty">Verify your email to see your orders.</div><div class="vw-actions"><button type="button" class="vw-btn" data-action="track">Verify my email</button></div></section>`;
     }
+
     let html = '';
     if (state.ordersNotice) html += `<div class="vw-order-notice">${ESC(state.ordersNotice)}</div>`;
     if (state.ordersError) html += `<div class="vw-order-error">${ESC(state.ordersError)}</div>`;
+
     if (state.ordersLoading && !state.orders) {
-      html += '<section class="vw-card"><div class="vw-empty">Loading your order...</div></section>';
+      return html + '<section class="vw-card"><div class="vw-empty">Loading your orders...</div></section>';
+    }
+
+    // Drilled into one order. No re-auth to get here and none to get back:
+    // the session is verified for the email, not for an order.
+    if (state.orderDetail && state.orderDetailView) {
+      html += renderOrderPanel(state.orderDetailView);
+      html += `<div class="vw-actions footer"><button type="button" class="vw-btn ghost" data-action="orders-list">All orders</button><button type="button" class="vw-btn ghost" data-action="back-to-chat">Ask a question</button><button type="button" class="vw-btn ghost quiet" data-action="signout">Sign out</button></div>`;
       return html;
     }
-    if (state.orders && state.orders.length) {
-      html += state.orders.map((order) => renderOrderPanel(order)).join('');
-    } else if (state.orders) {
-      html += '<section class="vw-card"><div class="vw-card-title">Your orders</div><div class="vw-empty">We could not find an order for this session.</div></section>';
-    }
-    // All three are ghosts: none of them is the next step, they are ways out.
-    // Sign out sits last and quietest, because it is the one that undoes work.
+
+    const orders = state.orders || [];
+    // The order id is a filter over the list now, not a credential. Shown only
+    // once there are enough orders for finding one to be a real problem.
+    const search = orders.length > 3 || state.orderSearch
+      ? `<div class="vw-field"><label for="vw-order-search">Find an order</label><input id="vw-order-search" data-order-search value="${ESC(state.orderSearch)}" placeholder="Order ID" autocomplete="off"></div>`
+      : '';
+
+    const rows = orders.length
+      ? orders.map((order) => `<button type="button" class="vw-order-row" data-action="order-open" data-order="${ESC(order.displayId)}"><span class="vw-order-row-main"><span class="vw-order-row-id">${ESC(order.displayId)}</span><span class="vw-order-row-meta">${ESC(order.statusLabel || order.status)} · ${ESC(order.itemCount)} item${order.itemCount === 1 ? '' : 's'}</span></span><span class="vw-order-row-total">${ESC(order.total)}</span><span class="vw-order-row-chevron">${icon('chevron-right')}</span></button>`).join('')
+      : `<div class="vw-empty">${state.orderSearch ? 'No order matches that ID.' : 'No orders on this email yet.'}</div>`;
+
+    html += `<section class="vw-card"><div class="vw-card-title">Your orders</div><div class="vw-empty">${ESC(state.verifiedEmail)}</div>${search}${rows}</section>`;
     html += `<div class="vw-actions footer"><button type="button" class="vw-btn ghost" data-action="refresh-order">Refresh</button><button type="button" class="vw-btn ghost" data-action="back-to-chat">Ask a question</button><button type="button" class="vw-btn ghost quiet" data-action="signout">Sign out</button></div>`;
     return html;
   }
 
+  /* Email only. The order id used to be required here, which meant signing
+   * out and verifying again for every order a customer wanted to look at. An
+   * order id is not a credential: it travels in the confirmation email, the
+   * shipping notice and the courier's tracking page. Possession of the inbox
+   * is the credential, and always was, because that is where the code goes. */
   function renderTrack() {
-    if (state.verified) return `<section class="vw-card"><div class="vw-card-title">Signed in</div><div class="vw-empty">Your order is linked to this session.</div><div class="vw-actions"><button type="button" class="vw-btn" data-action="refresh-order">Show order status</button><button type="button" class="vw-btn secondary" data-action="signout">Sign out</button></div></section>`;
-    return `<section class="vw-card"><div class="vw-card-title">Track orders</div><div class="vw-field"><label>Email used at checkout</label><input type="email" data-track-email value="${ESC(state.trackEmail)}"></div><div class="vw-field"><label>Order ID</label><input data-track-order value="${ESC(state.trackOrderId)}" placeholder="VEL-XXXXXX"></div>${state.codeSent ? `<div class="vw-field"><label>Six digit code</label><input class="vw-code" data-track-code maxlength="6" inputmode="numeric"></div><div class="vw-actions"><button type="button" class="vw-btn" data-action="track-verify">Verify code</button></div>` : `<button type="button" class="vw-btn" data-action="request-code">Email me a code</button>`}<div class="vw-empty" data-track-msg></div></section>`;
+    if (state.verified) {
+      return `<section class="vw-card"><div class="vw-card-title">Signed in</div><div class="vw-empty">${ESC(state.verifiedEmail)}</div><div class="vw-actions"><button type="button" class="vw-btn" data-action="refresh-order">Show my orders</button><button type="button" class="vw-btn ghost quiet" data-action="signout">Sign out</button></div></section>`;
+    }
+    const codeStep = `<div class="vw-field"><label for="vw-track-code">Six digit code</label><input id="vw-track-code" class="vw-code" data-track-code maxlength="6" inputmode="numeric" autocomplete="one-time-code"></div><div class="vw-actions"><button type="button" class="vw-btn" data-action="track-verify">Verify code</button></div><div class="vw-empty">Sent to ${ESC(state.trackEmail)}. It expires in a few minutes.</div>`;
+    const emailStep = `<div class="vw-field"><label for="vw-track-email">Email used at checkout</label><input id="vw-track-email" type="email" data-track-email value="${ESC(state.trackEmail)}" autocomplete="email" placeholder="you@email.com"></div><div class="vw-actions"><button type="button" class="vw-btn" data-action="request-code">Email me a code</button></div><div class="vw-empty">We will send a code and show every order on that email.</div>`;
+    return `<section class="vw-card"><div class="vw-card-title">Your orders</div>${state.codeSent ? codeStep : emailStep}<div class="vw-empty" data-track-msg></div></section>`;
   }
 
   /* ------------------------------ the cart ------------------------------ */
@@ -873,10 +901,16 @@
       // Storage is unavailable. The line is lost, which the caller surfaces.
       return false;
     }
-    // The same event api.js dispatches, so a host page that listens for its
-    // own cart changes sees the widget's writes too.
+    // The same events api.js dispatches, under both names, so a host page
+    // listening for either sees the widget's writes too. There is no
+    // server-side cart in this build: api.js keeps it in localStorage and this
+    // is the fallback for a page that never loads api.js, so these two are the
+    // only write paths that exist.
+    const count = lines.reduce((sum, line) => sum + (Number(line.qty) || 0), 0);
     try {
-      document.dispatchEvent(new CustomEvent('velour:cart-change'));
+      ['velour:cart-change', 'cart:change'].forEach((name) => {
+        document.dispatchEvent(new CustomEvent(name, { detail: { count, lines } }));
+      });
     } catch (err) { /* very old engines */ }
     return true;
   }
@@ -905,6 +939,15 @@
       const bridge = cartBridge();
       if (bridge) {
         bridge.add(product, size, color, qty);
+        // A third-party bridge owns its storage but not our badge, and has no
+        // contract to announce, so the event is raised on its behalf. Our own
+        // api.js Cart already announces both names from writeCart, and firing
+        // again here would double-deliver every add on the storefront.
+        if (bridge === window.SahaayCart) {
+          try {
+            document.dispatchEvent(new CustomEvent('cart:change', { detail: { count: null } }));
+          } catch (err) { /* very old engines */ }
+        }
         return true;
       }
       const lines = localCartRead();
@@ -982,7 +1025,7 @@
    * else it changes nothing, because there is no order to show. */
   async function fallBackToOrders() {
     if (!state.verified) return;
-    state.ordersNotice = 'The assistant is unavailable right now, so here is your order directly.';
+    state.ordersNotice = 'The assistant is unavailable right now, so here are your orders directly.';
     try {
       await loadOrders({ view: 'orders' });
     } catch (err) {
@@ -1001,13 +1044,17 @@
 
   async function requestCode() {
     const email = shadow.querySelector('[data-track-email]').value.trim();
-    const displayId = shadow.querySelector('[data-track-order]').value.trim();
     const msg = shadow.querySelector('[data-track-msg]');
-    state.trackEmail = email; state.trackOrderId = displayId;
-    if (!email || !displayId) { msg.textContent = 'Enter both fields first.'; return; }
+    state.trackEmail = email;
+    if (!email) { msg.textContent = 'Enter the email you used at checkout.'; return; }
     try {
-      await request('/api/session/request-code', { method: 'POST', body: JSON.stringify({ sessionId: sessionId(), email, displayId }) });
-      state.codeSent = true; render();
+      // No order id. Signing in is on the email, and the code goes to it.
+      await request('/api/session/request-code', {
+        method: 'POST',
+        body: JSON.stringify({ sessionId: sessionId(), email }),
+      });
+      state.codeSent = true;
+      render();
     } catch (err) { msg.textContent = err.message; }
   }
 
@@ -1047,17 +1094,24 @@
    * status" into the chat and wait for the model to decide to call a tool,
    * which put a language model, its rate limit and its bill between a verified
    * customer and a row they had already proved they can read. */
-  async function loadOrders({ view } = {}) {
+  async function loadOrders({ view, displayId, search } = {}) {
     if (view) state.view = view;
+    if (displayId !== undefined) state.orderDetail = displayId;
+    if (search !== undefined) state.orderSearch = search;
     state.ordersLoading = true;
     state.ordersError = '';
     render();
     try {
       const data = await request('/api/orders/mine', {
         method: 'POST',
-        body: JSON.stringify({ sessionId: sessionId() }),
+        body: JSON.stringify({
+          sessionId: sessionId(),
+          displayId: state.orderDetail || undefined,
+          search: state.orderSearch || undefined,
+        }),
       });
       state.orders = data.orders || [];
+      state.orderDetailView = data.detail || null;
       state.verifiedEmail = data.email || state.verifiedEmail;
       state.verified = true;
     } catch (err) {
@@ -1065,9 +1119,10 @@
       if (/not_verified/i.test(err.message || '')) {
         state.verified = false;
         state.orders = null;
-        state.ordersError = 'Your session expired. Verify again to see your order.';
+        state.orderDetail = null;
+        state.ordersError = 'Your session expired. Verify your email again to see your orders.';
       } else {
-        state.ordersError = err.message || 'Could not load your order right now.';
+        state.ordersError = err.message || 'Could not load your orders right now.';
       }
     } finally {
       state.ordersLoading = false;
@@ -1077,11 +1132,14 @@
 
   async function showOrderStatus() {
     state.ordersNotice = '';
-    await loadOrders({ view: 'orders' });
+    // Opens on the list. A customer with one order sees one row; a customer
+    // with six sees six, with no signing out in between, which is the whole
+    // point of verifying on the email.
+    await loadOrders({ view: 'orders', displayId: null });
   }
 
   async function cancelVerifiedOrder(displayId) {
-    const order = (state.orders || []).find((o) => o.displayId === displayId);
+    const order = currentOrder(displayId);
     if (!order) return;
     // Cancelling cannot be undone and, on a paid order, starts a refund
     // review. One deliberate confirmation rather than a single mis-click.
@@ -1096,7 +1154,7 @@
     try {
       const result = await request('/api/orders/mine/cancel', {
         method: 'POST',
-        body: JSON.stringify({ sessionId: sessionId() }),
+        body: JSON.stringify({ sessionId: sessionId(), displayId }),
       });
       state.ordersNotice = result.message || 'Your order is cancelled.';
       // Re-read rather than patching in place, so the steps and the buttons
@@ -1109,6 +1167,13 @@
       state.ordersLoading = false;
       render();
     }
+  }
+
+  /* The order a panel button belongs to: the one drilled into, or the summary
+   * row with the same id. */
+  function currentOrder(displayId) {
+    if (state.orderDetailView && state.orderDetailView.displayId === displayId) return state.orderDetailView;
+    return (state.orders || []).find((o) => o.displayId === displayId) || null;
   }
 
   function openReturnForm(displayId) {
@@ -1124,7 +1189,7 @@
   }
 
   async function submitReturn() {
-    const order = (state.orders || []).find((o) => o.displayId === state.returnFor);
+    const order = currentOrder(state.returnFor);
     if (!order) return;
     const items = Object.keys(state.returnItems)
       .filter((itemId) => state.returnItems[itemId])
@@ -1176,7 +1241,8 @@
   async function signout() {
     await request('/api/session/signout', { method: 'POST', body: JSON.stringify({}) });
     state.verified = false; state.activeOrder = null; state.codeSent = false; state.messages = [];
-    state.orders = null; state.verifiedEmail = ''; state.ordersNotice = ''; state.ordersError = ''; state.returnFor = null;
+    state.orders = null; state.orderDetail = null; state.orderDetailView = null; state.orderSearch = '';
+    state.verifiedEmail = ''; state.ordersNotice = ''; state.ordersError = ''; state.returnFor = null;
     state.view = 'chat';
     // Clears the stored copy as well, otherwise signing out empties the panel
     // and the next page brings the whole conversation back.
@@ -1286,6 +1352,27 @@
     });
     shadow.querySelector('[data-action="request-code"]')?.addEventListener('click', requestCode);
     shadow.querySelector('[data-action="track-verify"]')?.addEventListener('click', () => verifyDirect(shadow.querySelector('[data-track-code]').value.trim(), shadow.querySelector('[data-track-msg]')));
+    // Opening a row is not a new sign-in: the session is verified for the
+    // email, so the detail is one more read on the same credential.
+    shadow.querySelectorAll('[data-action="order-open"]').forEach((el) => el.addEventListener('click', () => {
+      state.ordersNotice = '';
+      loadOrders({ displayId: el.getAttribute('data-order') });
+    }));
+    shadow.querySelector('[data-action="orders-list"]')?.addEventListener('click', () => {
+      state.ordersNotice = '';
+      loadOrders({ displayId: null });
+    });
+    const orderSearch = shadow.querySelector('[data-order-search]');
+    if (orderSearch) {
+      let searchTimer = null;
+      orderSearch.addEventListener('input', () => {
+        // Debounced: a round trip and a re-render per keystroke would take
+        // focus back off the field on every character.
+        state.orderSearch = orderSearch.value;
+        if (searchTimer) clearTimeout(searchTimer);
+        searchTimer = setTimeout(() => loadOrders({ search: orderSearch.value }), 300);
+      });
+    }
     shadow.querySelector('[data-action="signout"]')?.addEventListener('click', signout);
     shadow.querySelector('[data-action="refresh-order"]')?.addEventListener('click', showOrderStatus);
     shadow.querySelector('[data-action="back-to-chat"]')?.addEventListener('click', () => { state.view = 'chat'; render(); });
@@ -1325,10 +1412,21 @@
       const checkout = (payload) => (window.API && typeof window.API.checkout === 'function')
         ? window.API.checkout(payload)
         : request('/api/orders/checkout', { method: 'POST', body: JSON.stringify(payload) });
+
+      /* Read BEFORE the re-render, not after.
+       *
+       * render() rebuilds the whole panel from state, and renderCheckout()
+       * emits fresh empty inputs. Setting cartSubmitting and re-rendering
+       * first therefore threw away everything the customer had typed, and the
+       * FormData below read the brand-new blank form: every field went up
+       * empty and the server answered "Invalid request" for a form that had
+       * been filled in correctly. Nothing about it looked like a client bug,
+       * because the request really was invalid by the time it was built. */
+      const values = Object.fromEntries(new FormData(event.currentTarget).entries());
+      const cart = cartLines();
+
       state.cartSubmitting = true; render();
       try {
-        const values = Object.fromEntries(new FormData(shadow.querySelector('[data-checkout-form]')).entries());
-        const cart = cartLines();
         // Only the code travels. The discount is recomputed server side from
         // the offers table, so nothing typed here can change the amount
         // charged.
@@ -1362,7 +1460,9 @@
     // api.js fires this on every cart write, from either side. Without it the
     // widget's open cart panel keeps showing what the cart held when it was
     // opened while the storefront shows something else.
-    document.addEventListener('velour:cart-change', refreshCart);
+    ['velour:cart-change', 'cart:change'].forEach((name) => {
+      document.addEventListener(name, refreshCart);
+    });
 
     render();
   }

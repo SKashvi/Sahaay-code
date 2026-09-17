@@ -92,10 +92,14 @@ const chatSchema = z.object({
   message: 'Send a message or attach a photo',
 });
 
+/* Email only. The order id is optional and is a hint about where to land,
+ * never a credential: it travels in the confirmation email, the shipping
+ * notice and the courier's tracking page, so requiring it added no security
+ * while forcing a customer to re-verify for every order they owned. */
 const requestCodeSchema = z.object({
   sessionId: sessionIdField,
   email: z.string().trim().email().max(200),
-  displayId: z.string().trim().min(1).max(40),
+  displayId: z.string().trim().max(40).optional().nullable(),
 });
 
 const verifyCodeSchema = z.object({
@@ -104,6 +108,15 @@ const verifyCodeSchema = z.object({
 });
 
 const sessionStateSchema = z.object({ sessionId: sessionIdField });
+
+/* The orders panel. displayId picks one order to open and search filters the
+ * list; neither is a credential, both are scoped to the verified email server
+ * side. */
+const sessionOrdersSchema = z.object({
+  sessionId: sessionIdField,
+  displayId: z.string().trim().max(40).optional().nullable(),
+  search: z.string().trim().max(40).optional().nullable(),
+});
 
 const pendingActionReviewSchema = z.object({
   note: z.string().trim().max(500).optional().default(''),
@@ -221,6 +234,7 @@ module.exports = {
   requestCodeSchema,
   verifyCodeSchema,
   sessionStateSchema,
+  sessionOrdersSchema,
   pendingActionReviewSchema,
   bundleUpsertSchema,
   adminUserCreateSchema,

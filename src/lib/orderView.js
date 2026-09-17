@@ -87,4 +87,55 @@ async function buildOrderView(orderId) {
   };
 }
 
-module.exports = { buildOrderView, ORDER_STAGES, ORDER_STAGE_LABELS };
+/* Every order for an email, newest first, as summary rows.
+ *
+ * Deliberately not the full view: a list of ten orders does not need ten sets
+ * of line items, and the detail view fetches the one the customer opens. Item
+ * count and total are what a row shows.
+ *
+ * The email comes from the verified session, never from a request body, so
+ * this cannot be pointed at somebody else's address.
+ */
+async function listOrdersForEmail(email, { search } = {}) {
+  const filter = String(search || '').trim();
+  const result = await db.query(
+    `SELECT o.display_id AS "displayId", o.status, o.total, o.created_at AS "createdAt",
+            COALESCE(SUM(i.qty), 0)::int AS "itemCount"
+       FROM orders o
+       LEFT JOIN order_items i ON i.order_id = o.id
+      WHERE lower(o.customer_email) = lower($1)
+        AND ($2 = '' OR o.display_id ILIKE '%' || $2 || '%')
+      GROUP BY o.id
+      ORDER BY o.created_at DESC
+      LIMIT 50`,
+    [String(email || '').trim(), filter]
+  );
+  return result.rows.map((row) => ({
+    displayId: row.displayId,
+    status: row.status,
+    statusLabel: ORDER_STAGE_LABELS[row.status] || (row.status === 'CANCELLED' ? 'Cancelled' : row.status),
+    total: paiseToRupeeString(row.total),
+    itemCount: row.itemCount,
+    placedAt: row.createdAt,
+  }));
+}
+
+/* One order by display id, scoped to the verified email. The scoping is the
+ * authorisation: a display id from somewhere else resolves to nothing rather
+ * than to somebody else's order. */
+async function buildOrderViewForEmail(email, displayId) {
+  const found = await db.query(
+    'SELECT id FROM orders WHERE display_id = $1 AND lower(customer_email) = lower($2)',
+    [String(displayId || '').trim(), String(email || '').trim()]
+  );
+  if (!found.rows.length) return null;
+  return buildOrderView(found.rows[0].id);
+}
+
+module.exports = {
+  buildOrderView,
+  buildOrderViewForEmail,
+  listOrdersForEmail,
+  ORDER_STAGES,
+  ORDER_STAGE_LABELS,
+};

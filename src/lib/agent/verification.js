@@ -25,20 +25,36 @@ function generateCode() {
 }
 
 /**
- * Sends a login code if, and only if, the email and order id actually match
- * a real order. The caller MUST give the customer the same answer either
- * way. Saying "no such order" here would turn this endpoint into an order id
- * and email checker for anyone who wants one.
+ * Sends a login code if, and only if, the email has at least one order.
+ *
+ * Email alone, not email plus an order id. An order id is not a credential:
+ * it travels in the confirmation email, the shipping notification and the
+ * courier's tracking page, so requiring it added no security while forcing a
+ * customer to sign out and verify again for every order they wanted to see.
+ * Possession of the inbox is the credential, and it always was, because that
+ * is where the code is sent.
+ *
+ * displayId is still accepted and still recorded when it matches, so a
+ * customer who arrived from a specific order lands on it, but it is never
+ * required and never affects whether the code is sent.
+ *
+ * The caller MUST give the customer the same answer either way. Saying "no
+ * such email" here would turn this endpoint into an address checker.
  */
 async function requestCode({ sessionId, email, displayId }) {
   const orderResult = await db.query(
-    `SELECT id, display_id, customer_email, customer_name
+    `SELECT id, display_id, customer_email
        FROM orders
-      WHERE display_id = $1 AND lower(customer_email) = lower($2)`,
-    [displayId, email]
+      WHERE lower(customer_email) = lower($1)
+      ORDER BY (display_id = $2) DESC, created_at DESC
+      LIMIT 1`,
+    [String(email || '').trim(), displayId ? String(displayId).trim() : '']
   );
   if (!orderResult.rows.length) return { sent: false };
 
+  // The newest order, or the one named if it belongs to this email. Recorded
+  // so a session can land somewhere sensible; the list is what it is really
+  // verified for.
   const order = orderResult.rows[0];
   const code = generateCode();
   const codeHash = await hashPassword(code);
@@ -63,11 +79,11 @@ async function requestCode({ sessionId, email, displayId }) {
     subject: `Your ${env.BRAND_NAME} verification code`,
     html: `<div style="font-family:sans-serif;max-width:480px;margin:0 auto;">
         <h2>${env.BRAND_NAME}</h2>
-        <p>Here is your code for order <strong>${order.display_id}</strong>:</p>
+        <p>Here is your code for signing in to your orders:</p>
         <p style="font-size:32px;letter-spacing:6px;font-weight:700;">${code}</p>
         <p>It expires in ${CODE_TTL_MINUTES} minutes. If you did not ask for this, you can ignore this email.</p>
       </div>`,
-    text: `Your ${env.BRAND_NAME} code for order ${order.display_id} is ${code}. It expires in ${CODE_TTL_MINUTES} minutes.`,
+    text: `Your ${env.BRAND_NAME} sign-in code is ${code}. It expires in ${CODE_TTL_MINUTES} minutes.`,
   });
 
   return { sent: true };

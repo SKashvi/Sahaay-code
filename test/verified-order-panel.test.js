@@ -8,8 +8,9 @@
  * they can read. These endpoints do it as one database call.
  *
  * Covered here:
- *   - /api/orders/mine returns the order for the verified session only, and
- *     needs the signed cookie, not just a session id anyone can type.
+ *   - /api/orders/mine lists the verified email's orders as summary rows, and
+ *     returns one full detail when the panel names an order. It needs the
+ *     signed cookie, not just a session id anyone can type.
  *   - the view carries everything the panel's buttons are drawn from, and its
  *     flags agree with what the cancel endpoint will actually allow.
  *   - /api/orders/mine/cancel cancels through the same path the tracking page
@@ -103,17 +104,30 @@ async function testMineNeedsTheCookieNotJustASessionId() {
 async function testMineReturnsTheOrderWithEverythingThePanelDraws() {
   const order = await placeOrder();
   const sessionId = crypto.randomUUID();
-  const res = await agent.post('/api/orders/mine')
-    .set('Cookie', verifiedCookie(order, sessionId))
-    .send({ sessionId });
+  const cookie = verifiedCookie(order, sessionId);
 
+  // The list. Summary rows only: ten orders do not need ten sets of line
+  // items, and the detail below fetches the one the customer opens.
+  const list = await agent.post('/api/orders/mine').set('Cookie', cookie).send({ sessionId });
+  assert.strictEqual(list.status, 200);
+  const row = list.body.orders.find((o) => o.displayId === order.displayId);
+  assert.ok(row, 'the verified email\'s order is listed');
+  assert.strictEqual(row.status, 'PENDING_PAYMENT');
+  assert.strictEqual(row.statusLabel, 'Payment pending', 'a row shows a label, not a raw enum');
+  // Quantities, not lines: this order is one line of two, and "2 items" is
+  // what a customer reads on a row.
+  assert.strictEqual(row.itemCount, 2, 'an item count, summed over quantities');
+  assert.ok(row.total, 'and a formatted total');
+
+  // The detail, which is what the order view renders.
+  const res = await agent.post('/api/orders/mine').set('Cookie', cookie).send({ sessionId, displayId: order.displayId });
   assert.strictEqual(res.status, 200);
-  assert.strictEqual(res.body.orders.length, 1);
-  const view = res.body.orders[0];
+  const view = res.body.detail;
+  assert.ok(view, 'opening an order returns its detail');
 
   assert.strictEqual(view.displayId, order.displayId);
   assert.strictEqual(view.status, 'PENDING_PAYMENT');
-  assert.strictEqual(view.statusLabel, 'Payment pending', 'the panel shows a label, not a raw enum');
+  assert.strictEqual(view.statusLabel, 'Payment pending');
   assert.ok(Array.isArray(view.items) && view.items.length === 1, 'line items');
   assert.ok(view.items[0].itemId, 'items must carry ids, the return form posts them');
   assert.ok(view.total, 'a formatted total');
@@ -126,7 +140,7 @@ async function testMineReturnsTheOrderWithEverythingThePanelDraws() {
   // What the buttons are drawn from.
   assert.strictEqual(view.canCancel, true, 'an unpaid order is cancellable');
   assert.strictEqual(view.canRequestReturn, false, 'nothing to return before delivery');
-  console.log('  ok  the view carries the steps, items and action flags the panel needs');
+  console.log('  ok  the list carries summary rows and the detail carries steps, items and action flags');
 }
 
 async function testCancelThroughTheVerifiedSession() {
@@ -134,17 +148,17 @@ async function testCancelThroughTheVerifiedSession() {
   const sessionId = crypto.randomUUID();
   const cookie = verifiedCookie(order, sessionId);
 
-  const before = await agent.post('/api/orders/mine').set('Cookie', cookie).send({ sessionId });
-  assert.strictEqual(before.body.orders[0].canCancel, true);
+  const before = await agent.post('/api/orders/mine').set('Cookie', cookie).send({ sessionId, displayId: order.displayId });
+  assert.strictEqual(before.body.detail.canCancel, true);
 
-  const cancel = await agent.post('/api/orders/mine/cancel').set('Cookie', cookie).send({ sessionId });
+  const cancel = await agent.post('/api/orders/mine/cancel').set('Cookie', cookie).send({ sessionId, displayId: order.displayId });
   assert.strictEqual(cancel.status, 200, JSON.stringify(cancel.body));
   assert.strictEqual(cancel.body.status, 'CANCELLED');
   assert.strictEqual(cancel.body.refundRequested, false, 'nothing was charged');
 
   // The panel re-reads, and the flags it draws from must have moved with it.
-  const after = await agent.post('/api/orders/mine').set('Cookie', cookie).send({ sessionId });
-  const view = after.body.orders[0];
+  const after = await agent.post('/api/orders/mine').set('Cookie', cookie).send({ sessionId, displayId: order.displayId });
+  const view = after.body.detail;
   assert.strictEqual(view.status, 'CANCELLED');
   assert.strictEqual(view.canCancel, false, 'the Cancel button must disappear');
   assert.strictEqual(view.stageIndex, -1, 'cancelled is not a step along the track');
@@ -168,12 +182,12 @@ async function testCancelRefusedOnceShipped() {
   const { transitionOrder } = require('../src/lib/orderStateMachine');
   await transitionOrder(order.orderId, 'SHIPPED');
 
-  const view = (await agent.post('/api/orders/mine').set('Cookie', cookie).send({ sessionId })).body.orders[0];
+  const view = (await agent.post('/api/orders/mine').set('Cookie', cookie).send({ sessionId, displayId: order.displayId })).body.detail;
   assert.strictEqual(view.canCancel, false, 'the panel must not offer a button the API will refuse');
   assert.strictEqual(view.stageIndex, 2, 'shipped is the third step');
 
   // And the endpoint refuses regardless of what a stale panel thought.
-  const cancel = await agent.post('/api/orders/mine/cancel').set('Cookie', cookie).send({ sessionId });
+  const cancel = await agent.post('/api/orders/mine/cancel').set('Cookie', cookie).send({ sessionId, displayId: order.displayId });
   assert.strictEqual(cancel.status, 400, 'a shipped order cannot be cancelled');
   assert.match(cancel.body.error, /shipped/i);
   assert.match(cancel.body.error, /return/i, 'and it points at returns');
@@ -197,7 +211,7 @@ async function testDeliveredOrderOffersAReturn() {
   await transitionOrder(order.orderId, 'SHIPPED');
   await transitionOrder(order.orderId, 'DELIVERED');
 
-  const view = (await agent.post('/api/orders/mine').set('Cookie', cookie).send({ sessionId })).body.orders[0];
+  const view = (await agent.post('/api/orders/mine').set('Cookie', cookie).send({ sessionId, displayId: order.displayId })).body.detail;
   assert.strictEqual(view.canRequestReturn, true, 'a freshly delivered order can be returned');
   assert.strictEqual(view.canCancel, false, 'and can no longer be cancelled');
   assert.strictEqual(view.stageIndex, 4, 'delivered is the last step');
